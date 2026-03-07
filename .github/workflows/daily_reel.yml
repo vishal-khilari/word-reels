@@ -2,7 +2,7 @@ name: Post Daily Word Reel
 
 on:
   schedule:
-    - cron: "20 12 * * *"
+    - cron: "55 13 * * *"
 
 jobs:
   post-reel:
@@ -28,8 +28,19 @@ jobs:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
         run: |
-          sed -i "s|YOUR_LONG_LIVED_ACCESS_TOKEN|$INSTAGRAM_TOKEN|g" instagram_uploader.py
-          sed -i "s|YOUR_INSTAGRAM_USER_ID|$INSTAGRAM_USER_ID|g"     instagram_uploader.py
+          python - <<'EOF'
+          import os
+          token   = os.environ["INSTAGRAM_TOKEN"]
+          user_id = os.environ["INSTAGRAM_USER_ID"]
+          with open("instagram_uploader.py", "r") as f:
+              content = f.read()
+          content = content.replace("YOUR_LONG_LIVED_ACCESS_TOKEN", token)
+          content = content.replace("YOUR_INSTAGRAM_USER_ID", user_id)
+          with open("instagram_uploader.py", "w") as f:
+              f.write(content)
+          print(f"✅ Token injected (length: {len(token)})")
+          print(f"✅ User ID injected (length: {len(user_id)})")
+          EOF
 
       - name: Generate and post reel
         run: python generate_reel.py
