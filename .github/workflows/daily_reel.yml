@@ -1,0 +1,38 @@
+name: Post Daily Word Reel
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # Runs every day at 9:00 AM UTC
+                           # Change hour to suit your timezone:
+                           # UTC+5:30 (India) → use '30 3 * * *' for 9 AM IST
+  workflow_dispatch:       # Also allows manual trigger from GitHub UI
+
+jobs:
+  post-reel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install opencv-python-headless pillow numpy requests wonderwords
+
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Inject credentials
+        env:
+          INSTAGRAM_TOKEN:   ${{ secrets.INSTAGRAM_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+        run: |
+          sed -i "s|YOUR_LONG_LIVED_ACCESS_TOKEN|$INSTAGRAM_TOKEN|g" instagram_uploader.py
+          sed -i "s|YOUR_INSTAGRAM_USER_ID|$INSTAGRAM_USER_ID|g"     instagram_uploader.py
+
+      - name: Generate and post reel
+        run: python generate_reel.py
