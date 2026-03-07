@@ -9,8 +9,8 @@ SETUP: Fill in ACCESS_TOKEN and IG_USER_ID below.
 import os, sys, time, json, requests
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-ACCESS_TOKEN  = "YOUR_LONG_LIVED_ACCESS_TOKEN"   # from Facebook Developer portal
-IG_USER_ID    = "YOUR_INSTAGRAM_USER_ID"          # numeric, e.g. "17841400000000000"
+ACCESS_TOKEN = os.environ.get("INSTAGRAM_TOKEN", "")
+IG_USER_ID   = os.environ.get("INSTAGRAM_USER_ID", "")
 CUSTOM_CAPTION = ""
 # ──────────────────────────────────────────────────────────────────────────────
 
