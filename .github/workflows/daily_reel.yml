@@ -2,7 +2,7 @@ name: Post Daily Word Reel
 
 on:
   schedule:
-    - cron: '40 17 * * *'
+    - cron: "20 12 * * *"
 
 jobs:
   post-reel:
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: pip install opencv-python-headless pillow numpy requests wonderwords
@@ -25,7 +25,7 @@ jobs:
 
       - name: Inject credentials
         env:
-          INSTAGRAM_TOKEN:   ${{ secrets.INSTAGRAM_TOKEN }}
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
         run: |
           sed -i "s|YOUR_LONG_LIVED_ACCESS_TOKEN|$INSTAGRAM_TOKEN|g" instagram_uploader.py
