@@ -38,4 +38,7 @@ jobs:
           fc-cache -fv
 
       - name: Generate and post reel
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
         run: python generate_reel.py

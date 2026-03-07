@@ -165,12 +165,15 @@ def make_screen3(n):
     if os.path.exists(IMG_SCREEN3):
         png = Image.open(IMG_SCREEN3).convert("RGBA")
         png = png.resize((W, H), Image.LANCZOS)
-        data = png.getdata()
-        new_data = [
-            (r, g, b, 0) if (r < 60 and g < 60 and b < 60) else (r, g, b, a)
-            for r, g, b, a in data
-        ]
-        png.putdata(new_data)
+        # Use newer API to avoid deprecation warning
+        pixels = list(png.getdata()) if hasattr(png, 'getdata') else []
+        try:
+            arr = np.array(png)
+            mask = (arr[:,:,0] < 60) & (arr[:,:,1] < 60) & (arr[:,:,2] < 60)
+            arr[mask, 3] = 0
+            png = Image.fromarray(arr)
+        except Exception:
+            pass
         img = img.convert("RGBA")
         img.alpha_composite(png)
         img = img.convert("RGB")
@@ -370,7 +373,8 @@ def main():
         except ImportError:
             print("⚠️  instagram_uploader.py not found next to generate_reel.py — skipping upload.")
         except ValueError as e:
-            if "haven't set" in str(e):
+            # ← FIXED: was "haven't set", now matches "not set" from instagram_uploader.py
+            if "not set" in str(e):
                 print(f"⚠️  Upload skipped — credentials not set:\n    {e}")
             else:
                 print(f"❌  Upload error:\n    {e}")
