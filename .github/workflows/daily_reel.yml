@@ -2,8 +2,7 @@ name: Post Daily Word Reel
 
 on:
   schedule:
-    - cron: "55 13 * * *"
-  workflow_dispatch:
+    - cron: "20 12 * * *"
 
 jobs:
   post-reel:
@@ -24,18 +23,24 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get install -y ffmpeg
 
-      - name: Install Poppins fonts
+      - name: Inject credentials
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
         run: |
-          mkdir -p /usr/share/fonts/truetype/google-fonts
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Bold.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Medium.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Regular.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Light.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Light.ttf
-          fc-cache -fv
+          python - <<'EOF'
+          import os
+          token   = os.environ["INSTAGRAM_TOKEN"]
+          user_id = os.environ["INSTAGRAM_USER_ID"]
+          with open("instagram_uploader.py", "r") as f:
+              content = f.read()
+          content = content.replace("YOUR_LONG_LIVED_ACCESS_TOKEN", token)
+          content = content.replace("YOUR_INSTAGRAM_USER_ID", user_id)
+          with open("instagram_uploader.py", "w") as f:
+              f.write(content)
+          print(f"✅ Token injected (length: {len(token)})")
+          print(f"✅ User ID injected (length: {len(user_id)})")
+          EOF
 
       - name: Generate and post reel
         run: python generate_reel.py

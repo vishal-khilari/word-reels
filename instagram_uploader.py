@@ -9,8 +9,8 @@ SETUP: Fill in ACCESS_TOKEN and IG_USER_ID below.
 import os, sys, time, json, requests
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-ACCESS_TOKEN = os.environ.get("INSTAGRAM_TOKEN", "")
-IG_USER_ID   = os.environ.get("INSTAGRAM_USER_ID", "")
+ACCESS_TOKEN  = "YOUR_LONG_LIVED_ACCESS_TOKEN"
+IG_USER_ID    = "YOUR_INSTAGRAM_USER_ID"
 CUSTOM_CAPTION = ""
 # ──────────────────────────────────────────────────────────────────────────────
 
