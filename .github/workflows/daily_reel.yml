@@ -3,6 +3,7 @@ name: Post Daily Word Reel
 on:
   schedule:
     - cron: "55 13 * * *"
+  workflow_dispatch:
 
 jobs:
   post-reel:
