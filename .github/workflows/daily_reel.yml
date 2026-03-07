@@ -2,10 +2,7 @@ name: Post Daily Word Reel
 
 on:
   schedule:
-    - cron: '0 18 * * *'   # Runs every day at 9:00 AM UTC
-                           # Change hour to suit your timezone:
-                           # UTC+5:30 (India) → use '30 3 * * *' for 9 AM IST
-  workflow_dispatch:       # Also allows manual trigger from GitHub UI
+    - cron: '40 17 * * *'
 
 jobs:
   post-reel:
