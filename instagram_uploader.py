@@ -16,12 +16,22 @@ CUSTOM_CAPTION = ""
 
 GRAPH_BASE = "https://graph.facebook.com/v21.0"
 
+# ── Telegram (optional — silently skipped if not available) ───────────────────
+try:
+    import telegram_notifier as _tg
+    def _tg_phase(phase, detail=""): _tg.notify_upload_phase(phase, detail)
+    def _tg_err(stage, err):        _tg.notify_error(stage, err)
+except ImportError:
+    def _tg_phase(phase, detail=""): pass
+    def _tg_err(stage, err):         pass
+
 
 # ── PHASE 1 : create container ───────────────────────────────────────────────
 
 def init_upload_session(local_path: str, caption: str):
     file_size = os.path.getsize(local_path)
     print(f"  📋  Initialising upload session ({file_size/1024/1024:.1f} MB)…")
+    _tg_phase("session", f"{file_size/1024/1024:.1f} MB — creating container…")
 
     resp = requests.post(
         f"{GRAPH_BASE}/{IG_USER_ID}/media",
@@ -37,16 +47,20 @@ def init_upload_session(local_path: str, caption: str):
     body = resp.json()
 
     if "error" in body:
-        raise RuntimeError(
+        msg = (
             f"Session init failed (code {body['error'].get('code')}):\n"
             f"  {body['error'].get('message')}"
         )
+        _tg_err("Session init", msg)
+        raise RuntimeError(msg)
 
     container_id = body.get("id")
     upload_url   = body.get("uri")
 
     if not container_id or not upload_url:
-        raise RuntimeError(f"Missing id/uri in response:\n{json.dumps(body, indent=2)}")
+        msg = f"Missing id/uri in response:\n{json.dumps(body, indent=2)}"
+        _tg_err("Session init", msg)
+        raise RuntimeError(msg)
 
     print(f"  ✅  Container ID : {container_id}")
     print(f"  ✅  Upload URL   : {upload_url}")
@@ -58,6 +72,7 @@ def init_upload_session(local_path: str, caption: str):
 def upload_video_bytes(local_path: str, upload_url: str) -> None:
     file_size = os.path.getsize(local_path)
     print(f"  ⬆️   Uploading {file_size/1024/1024:.1f} MB…")
+    _tg_phase("uploading", f"{file_size/1024/1024:.1f} MB — sending bytes to Instagram…")
 
     with open(local_path, "rb") as f:
         video_bytes = f.read()
@@ -68,7 +83,6 @@ def upload_video_bytes(local_path: str, upload_url: str) -> None:
         "Content-Type": "application/octet-stream",
     }
 
-    # Try every combination until one works
     combos = [
         ("PUT",  f"OAuth {ACCESS_TOKEN}"),
         ("POST", f"OAuth {ACCESS_TOKEN}"),
@@ -91,16 +105,20 @@ def upload_video_bytes(local_path: str, upload_url: str) -> None:
             print("  ✅  Upload succeeded!")
             return
 
-    raise RuntimeError(
+    msg = (
         "All upload attempts failed. Check your access token has "
         "'instagram_content_publish' permission and hasn't expired."
     )
+    _tg_err("Video upload", msg)
+    raise RuntimeError(msg)
 
 
 # ── PHASE 3 : poll until FINISHED ────────────────────────────────────────────
 
 def wait_for_container(container_id: str, timeout: int = 300) -> None:
     print("  ⏳  Waiting for Instagram to process the video…")
+    _tg_phase("processing", f"Container {container_id} — waiting for FINISHED status…")
+
     endpoint = f"{GRAPH_BASE}/{container_id}"
     params   = {"fields": "status_code,status", "access_token": ACCESS_TOKEN}
     deadline = time.time() + timeout
@@ -116,17 +134,23 @@ def wait_for_container(container_id: str, timeout: int = 300) -> None:
             print("\n  ✅  Processing complete.")
             return
         elif status == "ERROR":
-            raise RuntimeError(f"Instagram rejected the video:\n{json.dumps(body, indent=2)}")
+            msg = f"Instagram rejected the video:\n{json.dumps(body, indent=2)}"
+            _tg_err("Processing", msg)
+            raise RuntimeError(msg)
 
         time.sleep(8)
 
-    raise TimeoutError(f"Processing timed out after {timeout}s.")
+    msg = f"Processing timed out after {timeout}s."
+    _tg_err("Processing", msg)
+    raise TimeoutError(msg)
 
 
 # ── PHASE 4 : publish ────────────────────────────────────────────────────────
 
 def publish_container(container_id: str) -> str:
     print("  🚀  Publishing reel…")
+    _tg_phase("publishing", f"Container {container_id} — calling media_publish…")
+
     body = requests.post(
         f"{GRAPH_BASE}/{IG_USER_ID}/media_publish",
         data={"creation_id": container_id, "access_token": ACCESS_TOKEN},
@@ -134,10 +158,12 @@ def publish_container(container_id: str) -> str:
     ).json()
 
     if "error" in body:
-        raise RuntimeError(
+        msg = (
             f"Publish failed (code {body['error'].get('code')}):\n"
             f"  {body['error'].get('message')}"
         )
+        _tg_err("Publish", msg)
+        raise RuntimeError(msg)
 
     post_id = body["id"]
     print(f"  ✅  Post ID: {post_id}")

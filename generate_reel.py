@@ -165,8 +165,6 @@ def make_screen3(n):
     if os.path.exists(IMG_SCREEN3):
         png = Image.open(IMG_SCREEN3).convert("RGBA")
         png = png.resize((W, H), Image.LANCZOS)
-        # Use newer API to avoid deprecation warning
-        pixels = list(png.getdata()) if hasattr(png, 'getdata') else []
         try:
             arr = np.array(png)
             mask = (arr[:,:,0] < 60) & (arr[:,:,1] < 60) & (arr[:,:,2] < 60)
@@ -283,8 +281,20 @@ def main():
     # ── Parse arguments ────────────────────────────────────────────────────────
     skip_upload = "--no-upload" in sys.argv
 
+    # ── Import Telegram notifier ───────────────────────────────────────────────
+    try:
+        import telegram_notifier as tg
+        tg_ok = True
+    except ImportError:
+        tg_ok = False
+        print("⚠️  telegram_notifier.py not found — Telegram notifications disabled.")
+
     print("🎬  Instagram Word Challenge Reel Generator")
     print("─" * 45)
+
+    # ── Notify start ───────────────────────────────────────────────────────────
+    if tg_ok:
+        tg.notify_start()
 
     for label, path in [("Screen 1 image", IMG_SCREEN1), ("Screen 3 image", IMG_SCREEN3)]:
         if not os.path.exists(path):
@@ -293,12 +303,22 @@ def main():
             print(f"✅  {label} found: {os.path.basename(path)}")
 
     print("\n📖  Fetching word…")
-    word, pos, defn = get_word()
+    try:
+        word, pos, defn = get_word()
+    except Exception as e:
+        if tg_ok:
+            tg.notify_error("Word fetch", str(e))
+        raise
+
     print(f"    Word      : {word}")
     print(f"    POS       : {pos or 'N/A'}")
     snippet = (defn or "")[:65] + ("…" if defn and len(defn) > 65 else "")
     print(f"    Definition: {snippet}")
     print()
+
+    # ── Notify word chosen ─────────────────────────────────────────────────────
+    if tg_ok:
+        tg.notify_word(word, pos, defn)
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))
@@ -353,13 +373,25 @@ def main():
     print(f"    Word     : {word.upper()}")
     print(f"    Duration : 75s  |  {W}×{H}  |  9:16 Reel")
 
+    # ── Notify render done + send video preview ────────────────────────────────
+    if tg_ok:
+        tg.notify_render_done(OUTPUT)
+        tg.send_video(
+            OUTPUT,
+            caption=f"🎬 Preview: Today's reel — word is <b>{word.upper()}</b>",
+        )
+
     # ── Instagram auto-upload ──────────────────────────────────────────────────
     if skip_upload:
         print("\n⏭   Skipping Instagram upload (--no-upload flag).")
+        if tg_ok:
+            tg.notify_skipped("--no-upload flag was passed.")
     else:
         print("\n" + "─" * 45)
         print("📱  Uploading to Instagram…")
         print("─" * 45)
+        if tg_ok:
+            tg.notify_upload_start()
         try:
             from instagram_uploader import upload_reel
             post_id = upload_reel(
@@ -370,18 +402,29 @@ def main():
             )
             print(f"\n🎉  Reel is LIVE on Instagram!  (Post ID: {post_id})")
             print("    Open the Instagram app to see it on your profile.")
+            if tg_ok:
+                tg.notify_live(post_id, word)
         except ImportError:
-            print("⚠️  instagram_uploader.py not found next to generate_reel.py — skipping upload.")
+            msg = "instagram_uploader.py not found — skipping upload."
+            print(f"⚠️  {msg}")
+            if tg_ok:
+                tg.notify_skipped(msg)
         except ValueError as e:
-            # ← FIXED: was "haven't set", now matches "not set" from instagram_uploader.py
             if "not set" in str(e):
-                print(f"⚠️  Upload skipped — credentials not set:\n    {e}")
+                msg = f"Credentials not configured:\n{e}"
+                print(f"⚠️  Upload skipped — {msg}")
+                if tg_ok:
+                    tg.notify_skipped(msg)
             else:
                 print(f"❌  Upload error:\n    {e}")
                 print("    Video saved locally as:", OUTPUT)
+                if tg_ok:
+                    tg.notify_error("Instagram upload", str(e))
         except Exception as e:
             print(f"❌  Upload failed:\n    {e}")
             print("    The video is still saved locally as:", OUTPUT)
+            if tg_ok:
+                tg.notify_error("Instagram upload", str(e))
 
     print("\n📱  Done!")
 
