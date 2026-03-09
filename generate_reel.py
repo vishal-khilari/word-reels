@@ -262,8 +262,8 @@ def make_screen3(n):
     f_num = fnt(F_BOLD, 360)               # large bold font for the countdown digit
     num   = str(n)                         # converts the countdown number (3, 2, or 1) to a string for drawing
     nw, nh = tsz(draw, num, f_num)         # measures the width and height of the digit
-    draw.text((ccx - nw // 2, ccy - nh // 2 - 68), num, font=f_num, fill=DARK)
-    # draws the number centred inside the circle; -68 shifts it up slightly so it looks optically centred
+    draw.text((ccx - nw // 2, ccy - nh // 2 - 69), num, font=f_num, fill=DARK)
+    # draws the number centred inside the circle; -69 shifts it up slightly so it looks optically centred
     return img   # returns the finished countdown frame as a PIL Image
 
 # ── SCREEN 4  (60 s) ───────────────────────────────────────────────────────────
@@ -302,8 +302,8 @@ def make_screen4(word, secs_left):
     f_num = fnt(F_BOLD, 360)                             # large bold font for the countdown number inside the circle
     num   = str(max(0, int(math.ceil(secs_left))))       # rounds up secs_left and converts to string; clamps at 0
     nw, nh = tsz(draw, num, f_num)                       # measures the width and height of the number
-    draw.text((cx_c - nw // 2, cy_c - nh // 2 - 68), num, font=f_num, fill=DARK)
-    # draws the number centred inside the circle; -68 shifts it up so it looks optically centred in the circle
+    draw.text((cx_c - nw // 2, cy_c - nh // 2 - 69), num, font=f_num, fill=DARK)
+    # draws the number centred inside the circle; -69 shifts it up so it looks optically centred in the circle
     return img   # returns the finished timer frame as a PIL Image
 
 # ── AUDIO ──────────────────────────────────────────────────────────────────────
