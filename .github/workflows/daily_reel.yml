@@ -2,10 +2,14 @@ name: Post Daily Word Reel
 
 on:
   schedule:
-    - cron: "30 4 * * *"
+    - cron: "0 4 * * *"
+    - cron: "0 6 * * *"
     - cron: "0 8 * * *"
-    - cron: "30 11 * * *"
-    - cron: "30 15 * * *"
+    - cron: "0 10 * * *"
+    - cron: "0 12 * * *"
+    - cron: "0 14 * * *"
+    - cron: "0 16 * * *"
+    - cron: "0 18 * * *"
   workflow_dispatch:
 
 jobs:
