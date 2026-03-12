@@ -1,17 +1,30 @@
 name: Post Daily Word Reel
 
 on:
-  # Three posts per day at Instagram's peak engagement windows (UTC):
-  #   08:00 UTC → 1:30 PM IST / 9:00 AM CET  — morning commute
-  #   12:00 UTC → 5:30 PM IST / 2:00 PM CET  — lunch break
-  #   17:00 UTC → 10:30 PM IST / 7:00 PM CET — evening wind-down
+  # 8 posts per day — scheduled 40 minutes EARLY to account for GitHub Actions
+  # queue delay (typically 10-40 min on the free tier).
   #
-  # Posting more than 3-4 Reels per day from an automated account
-  # risks triggering Instagram's spam detection and suppressing reach.
+  # All times in UTC. IST = UTC + 5:30
+  #
+  #  Cron (UTC)  │ Fires at (UTC) │ Actual post time (IST, after ~40 min delay)
+  # ─────────────┼────────────────┼────────────────────────────────────────────
+  #  50 0 * * *  │  00:50 UTC     │  ~07:00 IST  — early morning
+  #  50 2 * * *  │  02:50 UTC     │  ~09:00 IST  — morning commute
+  #  50 4 * * *  │  04:50 UTC     │  ~11:00 IST  — mid morning
+  #  50 6 * * *  │  06:50 UTC     │  ~13:00 IST  — lunch break
+  #  50 8 * * *  │  08:50 UTC     │  ~15:00 IST  — afternoon
+  #  50 11 * * * │  11:50 UTC     │  ~18:00 IST  — evening peak
+  #  50 13 * * * │  13:50 UTC     │  ~20:00 IST  — prime time
+  #  50 15 * * * │  15:50 UTC     │  ~22:00 IST  — night audience
   schedule:
-    - cron: "0 8  * * *"
-    - cron: "0 12 * * *"
-    - cron: "0 17 * * *"
+    - cron: "50 0  * * *"
+    - cron: "50 2  * * *"
+    - cron: "50 4  * * *"
+    - cron: "50 6  * * *"
+    - cron: "50 8  * * *"
+    - cron: "50 11 * * *"
+    - cron: "50 13 * * *"
+    - cron: "50 15 * * *"
   workflow_dispatch:
 
 jobs:

@@ -509,12 +509,16 @@ def build_audio():
     for i in range(5):
         mix(69 + i, gen_beep(freq=1450, dur=0.14, vol=0.60))
 
-    audio = np.clip(audio, -32767, 32767).astype(np.int16)
+    audio  = np.clip(audio, -32767, 32767).astype(np.int16)
+    # Duplicate mono → stereo so ffmpeg receives a stereo source.
+    # Instagram requires stereo AAC; upmixing at the ffmpeg stage
+    # sometimes produces a silent or dropped audio track on upload.
+    stereo = np.column_stack([audio, audio])
     with wave.open(TMP_AUDIO, "w") as wf:
-        wf.setnchannels(1)
+        wf.setnchannels(2)
         wf.setsampwidth(2)
         wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(audio.tobytes())
+        wf.writeframes(stereo.tobytes())
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  WORD FETCH
@@ -725,29 +729,50 @@ def main():
     print("✓")
 
     print("🎞   Merging video + audio…", end=" ", flush=True)
+
+    # Instagram Reels audio requirements:
+    #   - AAC codec, stereo (2 channels), 44100 Hz, ≥128k bitrate
+    #   - H.264 video with yuv420p pixel format (broadest device compatibility)
+    #   - movflags +faststart  → moov atom at front of file (required for streaming upload)
+    _VIDEO_FLAGS = [
+        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-pix_fmt", "yuv420p",
+    ]
+    _AUDIO_FLAGS = [
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+    ]
+    _CONTAINER_FLAGS = [
+        "-movflags", "+faststart",
+        "-shortest",
+    ]
+
     if bgm_path:
         cmd = [
             "ffmpeg", "-y",
             "-i", TMP_VIDEO, "-i", TMP_AUDIO, "-i", bgm_path,
             "-filter_complex",
-            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.3[aout]",
+            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.3,"
+            "aresample=44100,aformat=channel_layouts=stereo[aout]",
             "-map", "0:v", "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-            "-c:a", "aac", "-b:a", "128k", "-shortest", OUTPUT,
+            *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
+            OUTPUT,
         ]
     else:
         cmd = [
             "ffmpeg", "-y",
             "-i", TMP_VIDEO, "-i", TMP_AUDIO,
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-            "-c:a", "aac", "-b:a", "128k", "-shortest", OUTPUT,
+            "-map", "0:v", "-map", "1:a",
+            *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
+            OUTPUT,
         ]
 
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
+        print("\n❌  ffmpeg failed! stderr output:")
+        print(r.stderr.decode(errors="replace")[-1500:])
         fallback = "copy" if os.name == "nt" else "cp"
         subprocess.run([fallback, TMP_VIDEO, OUTPUT], shell=(os.name == "nt"))
-        print("(ffmpeg unavailable — saved without audio)")
+        print("(saved without audio — fix ffmpeg errors above)")
     else:
         print("✓")
 
