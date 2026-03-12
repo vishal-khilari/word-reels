@@ -1,340 +1,570 @@
 """
-Instagram Word Challenge Reel Generator  +  Auto-Upload
-  Screen 1 (4s)  : Image "Overcome_your_fear_of_speaking_in_just_60_seconds.png"
-  Screen 2 (8s)  : Today's word + part of speech + definition
-  Screen 3 (3s)  : Image "You_have_60_seconds_to_speak_using_this_word_Don't_stop_talking.png" + countdown 3→2→1 with beeps
-  Screen 4 (60s) : Word reminder + 60-second circle timer
+Instagram Word Challenge Reel Generator  +  Auto-Upload  [v2 — UPGRADED]
+═══════════════════════════════════════════════════════════════════════════
+  Screen 1 (3 s)  : Ken Burns slow-zoom on opener image
+  Screen 2 (8 s)  : Animated word reveal — elements slide/bounce in
+  Screen 3 (3 s)  : Pulsing countdown 3 → 2 → 1 with bounce animation
+  Screen 4 (60 s) : Gradient shifts blue→orange→red, pulsing circle,
+                    colour-coded arc, HALFWAY! badge, progress bar,
+                    yellow word blink every 10 s, urgency mode <10 s,
+                    "Comment below 👇" CTA, end card last 3 s
 
-Run: python3 generate_reel.py
-     python3 generate_reel.py --no-upload   ← skip Instagram upload
+  Audio            : Countdown beeps + 10-second ticks + urgency beeps
+
+  RANDOM MUSIC     : Place audio files (mp3/wav/aac/m4a) inside an
+                     "audios" sub-folder next to this script.
+                     One will be chosen at random each run and mixed
+                     at 30 % volume over the whole reel.
+                     Fallback: a single bgm.mp3 / bgm.wav in this folder.
+
+Run:  python3 generate_reel.py
+      python3 generate_reel.py --no-upload   ← skip Instagram upload
 
 Requires: pip install opencv-python pillow numpy requests wonderwords
+          ffmpeg must be on PATH for audio merging
 """
 
 # ── IMPORTS ────────────────────────────────────────────────────────────────────
-import os         
-import sys        
-import wave       
-import math       
-import subprocess 
-import random     
-import tempfile   
+import os, sys, wave, math, subprocess, random, tempfile
 import numpy as np
-import cv2        
+import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-W, H      = 1080, 1920        # video width and height in pixels (standard 9:16 vertical/Reels format)
-FPS       = 30                # frames per second — how many images are shown per second in the video
-_TMP      = tempfile.gettempdir()                     # gets the OS temp folder path (e.g. /tmp on Linux)
-TMP_VIDEO = os.path.join(_TMP, "reel_noaudio.mp4")    # path to the temporary video file without audio
-TMP_AUDIO = os.path.join(_TMP, "reel_audio.wav")      # path to the temporary audio-only WAV file
-OUTPUT    = "word_reel.mp4"                           # final output file name saved in the current folder
+W, H      = 1080, 1920
+FPS       = 30
+_TMP      = tempfile.gettempdir()
+TMP_VIDEO = os.path.join(_TMP, "reel_noaudio.mp4")
+TMP_AUDIO = os.path.join(_TMP, "reel_audio.wav")
+OUTPUT    = "word_reel.mp4"
 
-# Image assets — expected in the same folder as this script
-SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))  # gets the folder where this script lives
-IMG_SCREEN1 = os.path.join(SCRIPT_DIR, "Overcome_your_fear_of_speaking_in_just_60_seconds.png")          # full path to the Screen 1 opener image
-IMG_SCREEN3 = os.path.join(SCRIPT_DIR, "You_have_60_seconds_to_speak_using_this_word_Don't_stop_talking.png")  # full path to the Screen 3 prompt image
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+IMG_SCREEN1 = os.path.join(SCRIPT_DIR, "Overcome_your_fear_of_speaking_in_just_60_seconds.png")
+IMG_SCREEN3 = os.path.join(SCRIPT_DIR, "You_have_60_seconds_to_speak_using_this_word_Don't_stop_talking.png")
 
-# Font paths — tries Google Fonts, falls back to DejaVu
-_GF  = "/usr/share/fonts/truetype/google-fonts"                              # folder where Google Fonts are installed on Linux
-_DV  = "/usr/share/fonts/truetype/dejavu"                                    # folder where DejaVu fallback fonts live on Linux
-_WIN = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")         # Windows system fonts folder path
+# ── FONTS ──────────────────────────────────────────────────────────────────────
+_GF  = "/usr/share/fonts/truetype/google-fonts"
+_DV  = "/usr/share/fonts/truetype/dejavu"
+_WIN = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")
 
 def _fp(gf_name, dv_name="DejaVuSans-Bold.ttf"):
-    # tries each font location in order and returns the first path that actually exists on disk
     for folder, name in [(_GF, gf_name), (_WIN, "arialbd.ttf"),
-                         (_WIN, "arial.ttf"), (_DV, dv_name)]:
-        p = os.path.join(folder, name)   # builds the full path to the candidate font file
-        if os.path.exists(p):            # checks if that font file exists on this machine
-            return p                     # returns the first found font path immediately
-    return None   # returns None if no font file was found; PIL will then use its built-in default
+                         (_WIN, "arial.ttf"),  (_DV,  dv_name)]:
+        p = os.path.join(folder, name)
+        if os.path.exists(p): return p
+    return None
 
-F_BOLD  = _fp("Poppins-Bold.ttf")                        # path to the bold font used for headings and the word
-F_MED   = _fp("Poppins-Medium.ttf",   "DejaVuSans.ttf")  # path to the medium-weight font used for labels
-F_REG   = _fp("Poppins-Regular.ttf",  "DejaVuSans.ttf")  # path to the regular font (available for use if needed)
-F_LIGHT = _fp("Poppins-Light.ttf",    "DejaVuSans.ttf")  # path to the light font used for the definition body text
+F_BOLD  = _fp("Poppins-Bold.ttf")
+F_MED   = _fp("Poppins-Medium.ttf",  "DejaVuSans.ttf")
+F_LIGHT = _fp("Poppins-Light.ttf",   "DejaVuSans.ttf")
 
 # ── COLOURS ────────────────────────────────────────────────────────────────────
-BG         = (74,  144, 199)   # background blue colour used on all screens (RGB)
-WHITE      = (255, 255, 255)   # pure white used for main text like the word and definition
-DARK       = (15,   40,  80)   # dark navy blue used for label text like "Today's word:"
-CIRCLE_BG  = (100, 170, 225)   # lighter blue fill colour inside the countdown/timer circles
-CIRCLE_BDR = (30,   90, 155)   # darker blue colour for the circle border/outline
+WHITE  = (255, 255, 255)
+DARK   = ( 15,  40,  80)
+YELLOW = (255, 210,  50)
 
-# ── HELPERS ────────────────────────────────────────────────────────────────────
+# Gradient palette (top → bottom for each mood)
+_G_TOP_BLUE   = (  8,  25,  75)
+_G_BOT_BLUE   = ( 40, 120, 210)
+_G_TOP_ORANGE = ( 75,  30,  10)
+_G_BOT_ORANGE = (210, 110,  30)
+_G_TOP_RED    = ( 90,   8,   8)
+_G_BOT_RED    = (210,  35,  35)
+
+# ── CORE HELPERS ───────────────────────────────────────────────────────────────
 def fnt(path, size):
-    # loads a TrueType font at the given size; falls back to PIL's default if path is missing
-    if path and os.path.exists(path):   # only tries to load if a valid path was provided and exists
-        try: return ImageFont.truetype(path, size)  # loads the font file at the requested pixel size
-        except: pass                                # silently ignores errors and falls through to default
-    return ImageFont.load_default()     # returns PIL's built-in bitmap font if no TTF font is available
+    """Load a TrueType font, falling back to PIL default if unavailable."""
+    if path and os.path.exists(path):
+        try: return ImageFont.truetype(path, max(1, size))
+        except: pass
+    return ImageFont.load_default()
 
-def blank():
-    # creates a fresh 1080x1920 image filled with the background blue colour
-    return Image.new("RGB", (W, H), BG)
+def lerp(a, b, t):
+    """Linear interpolation."""
+    return a + (b - a) * t
+
+def clamp(v, lo=0.0, hi=1.0):
+    return max(lo, min(hi, v))
+
+def ease_out(t):
+    """Cubic ease-out."""
+    t = clamp(t)
+    return 1 - (1 - t) ** 3
+
+def ease_in_out(t):
+    """Smooth step."""
+    t = clamp(t)
+    return t * t * (3 - 2 * t)
+
+def lerp_color(c1, c2, t):
+    """Interpolate between two RGB tuples."""
+    t = clamp(t)
+    return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
 
 def pil2cv(img):
-    # converts a PIL Image to an OpenCV-compatible numpy array (BGR format) so cv2 can write it as a video frame
+    """Convert PIL RGB image → OpenCV BGR numpy array."""
     return cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 def tsz(draw, text, font):
-    # measures and returns the pixel width and height of a text string when drawn with the given font
-    bb = draw.textbbox((0, 0), text, font=font)   # gets the bounding box (x0, y0, x1, y1) of the text
-    return bb[2] - bb[0], bb[3] - bb[1]           # returns width (x1-x0) and height (y1-y0)
+    """Return (width, height) of rendered text."""
+    bb = draw.textbbox((0, 0), text, font=font)
+    return bb[2] - bb[0], bb[3] - bb[1]
 
-def cx(draw, text, font):
-    # calculates the x position needed to horizontally centre text on the canvas
-    w, _ = tsz(draw, text, font)   # measures the text width
-    return (W - w) // 2            # subtracts text width from canvas width and halves it
+def composite(base_rgb, overlay_rgba):
+    """Alpha-composite an RGBA overlay onto an RGB image. Returns RGB."""
+    b = base_rgb.convert("RGBA")
+    b.alpha_composite(overlay_rgba)
+    return b.convert("RGB")
 
-def draw_wrapped(draw, text, x, y, font, color, max_w, gap=18):
-    """Left-aligned wrapped text. Returns y after last line."""
-    words = text.split()       # splits the full text string into a list of individual words
-    lines, cur = [], []        # lines = completed lines ready to draw; cur = words being collected for current line
-    for w in words:            # loops through every word in the text
-        test = " ".join(cur + [w])          # builds a trial string by adding the next word to the current line
-        tw, _ = tsz(draw, test, font)       # measures how wide that trial string would be
-        if tw > max_w and cur:              # if it's too wide AND there are already words in the current line
-            lines.append(" ".join(cur))     # finishes the current line and saves it
-            cur = [w]                       # starts a new line with the word that didn't fit
+# ── STROKE TEXT HELPER ─────────────────────────────────────────────────────────
+def draw_text_stroked(draw, pos, text, font, fill, stroke_fill=WHITE,
+                      stroke_width=3):
+    x, y = pos
+    for dx in range(-stroke_width, stroke_width + 1):
+        for dy in range(-stroke_width, stroke_width + 1):
+            if dx == 0 and dy == 0:
+                continue
+            if abs(dx) == stroke_width or abs(dy) == stroke_width:
+                draw.text((x + dx, y + dy), text, font=font, fill=stroke_fill)
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def draw_wrapped_stroked(draw, text, x, y, font, fill, stroke_fill,
+                         stroke_width, max_w, gap=18):
+    words  = text.split()
+    lines, cur = [], []
+    for w in words:
+        test = " ".join(cur + [w])
+        tw, _ = tsz(draw, test, font)
+        if tw > max_w and cur:
+            lines.append(" ".join(cur))
+            cur = [w]
         else:
-            cur.append(w)                   # the word fits, so add it to the current line
-    if cur: lines.append(" ".join(cur))     # adds any remaining words as the final line
-    for line in lines:                      # loops through each completed line to draw it
-        draw.text((x, y), line, font=font, fill=color)   # draws the line at the current x,y position
-        _, lh = tsz(draw, line, font)                    # measures the height of this line
-        y += lh + gap                                    # moves y down by line height plus the gap between lines
-    return y   # returns the y position after the last line so the caller knows where to continue
+            cur.append(w)
+    if cur: lines.append(" ".join(cur))
+    for line in lines:
+        draw_text_stroked(draw, (x, y), line, font, fill,
+                          stroke_fill=stroke_fill, stroke_width=stroke_width)
+        _, lh = tsz(draw, line, font)
+        y += lh + gap
+    return y
 
-def draw_wrapped_center(draw, text, y, font, color, max_w, gap=18):
-    """Centered wrapped text. Returns y after last line."""
-    words = text.split()       # splits the text into individual words
-    lines, cur = [], []        # lines = finished lines; cur = words being built into current line
-    for w in words:            # iterates over every word
-        test = " ".join(cur + [w])          # trial string with the next word added
-        tw, _ = tsz(draw, test, font)       # measures its pixel width
-        if tw > max_w and cur:              # if it overflows the max width and the line isn't empty
-            lines.append(" ".join(cur))     # saves the current line
-            cur = [w]                       # starts a new line
+
+def draw_wrapped_on(draw, text, x, y, font, color_rgba, max_w, gap=18):
+    words  = text.split()
+    lines, cur = [], []
+    for w in words:
+        test = " ".join(cur + [w])
+        tw, _ = tsz(draw, test, font)
+        if tw > max_w and cur:
+            lines.append(" ".join(cur))
+            cur = [w]
         else:
-            cur.append(w)                   # word fits, keep building
-    if cur: lines.append(" ".join(cur))     # saves the last line
-    for line in lines:                      # draws each line
-        tw, lh = tsz(draw, line, font)      # measures width and height of this line
-        draw.text(((W - tw) // 2, y), line, font=font, fill=color)  # draws centred by offsetting x to the middle
-        y += lh + gap                       # moves y down for the next line
-    return y   # returns final y position after all lines
+            cur.append(w)
+    if cur: lines.append(" ".join(cur))
+    for line in lines:
+        draw.text((x, y), line, font=font, fill=color_rgba)
+        _, lh = tsz(draw, line, font)
+        y += lh + gap
+    return y
 
-def paste_image_centered(base, img_path, y_center=None, scale_to_width=None):
-    # loads an image from disk, optionally rescales it, and pastes it centred onto the base canvas
-    if not os.path.exists(img_path):               # checks if the image file actually exists
-        print(f"\n⚠️  Image not found: {img_path}")   # warns the user if the file is missing
-        return base                                # returns the unchanged base image so the script doesn't crash
-    overlay = Image.open(img_path).convert("RGBA")   # opens the image and converts to RGBA so transparency is preserved
-    if scale_to_width is not None:               # only rescales if a target width was given
-        ratio = scale_to_width / overlay.width   # calculates the scale factor needed to hit the target width
-        new_h = int(overlay.height * ratio)      # applies the same scale factor to height to keep the aspect ratio
-        overlay = overlay.resize((scale_to_width, new_h), Image.LANCZOS)  # resizes using high-quality LANCZOS filter
-    if y_center is None:                         # if no vertical centre was specified
-        y_center = H // 2                        # defaults to the exact middle of the canvas
-    x = (W - overlay.width) // 2                # calculates x so the overlay is horizontally centred
-    y = y_center - overlay.height // 2          # calculates y so the overlay is vertically centred at y_center
-    base = base.convert("RGBA")                  # converts base to RGBA so alpha compositing works
-    base.paste(overlay, (x, y), overlay)         # pastes the overlay onto the base using its own alpha channel as mask
-    return base.convert("RGB")                   # converts back to RGB (no transparency) for video frame use
-
-# ── SCREEN 1  (4 s) ────────────────────────────────────────────────────────────
-def make_screen1():
-    # builds the opener screen — just a full-screen background with the opener PNG centred on it
-    img = blank()   # starts with a fresh blue background canvas
-    # pastes the opener image centred horizontally, moved 120px above vertical centre, scaled to fill the width
-    img = paste_image_centered(img, IMG_SCREEN1, y_center=H // 2 - 120, scale_to_width=W - 80)
-    return img   # returns the finished screen as a PIL Image
-
-# ── SCREEN 2  (8 s) ────────────────────────────────────────────────────────────
-def make_screen2(word, pos, defn):
-    # builds the word reveal screen showing: "Today's word:", the word, part of speech, and definition
-    img  = blank()              # starts with a fresh blue background canvas
-    draw = ImageDraw.Draw(img)  # creates a drawing context so text and shapes can be drawn onto the image
-
-    LEFT        = 70         # left margin in pixels for all text on this screen
-    MAX_W_DEFN  = W - 340    # maximum line width for definition text — narrower to avoid Instagram's side buttons
-    MAX_W_OTHER = W - 180    # maximum line width for all other text (normal margin)
-
-    f1 = fnt(F_BOLD,  102)   # font for "Today's word:" label — bold, slightly smaller than the word
-    f2 = fnt(F_BOLD,  145)   # font for the actual word — largest text on the screen
-    f3 = fnt(F_MED,    88)   # font for "Part of speech:" label and its value
-    f4 = fnt(F_MED,    88)   # font for "Definition:" label
-    f5 = fnt(F_LIGHT,  82)   # font for the definition body text — light weight for readability
-
-    def block_height(text, font, max_w, gap=24):
-        # measures the total pixel height a wrapped text block will occupy without actually drawing it
-        words = text.split()        # splits text into words
-        lines, cur = [], []         # lines = completed lines; cur = current line being built
-        for w in words:             # iterates over each word
-            test = " ".join(cur + [w])         # trial string
-            tw, _ = tsz(draw, test, font)      # measures its width
-            if tw > max_w and cur:             # if too wide and line isn't empty
-                lines.append(" ".join(cur))    # saves the current line
-                cur = [w]                      # starts a new line
-            else:
-                cur.append(w)                  # keeps building the line
-        if cur: lines.append(" ".join(cur))    # saves the last line
-        total = 0                              # accumulator for total height
-        for line in lines:                     # loops through each wrapped line
-            _, lh = tsz(draw, line, font)      # measures the height of this line
-            total += lh + gap                  # adds line height plus gap to the total
-        return total   # returns the total pixel height of the entire wrapped block
-
-    # measures the pixel height of each text element so the whole block can be vertically centred
-    _, h1  = tsz(draw, "Today's word:", f1)           # height of the "Today's word:" label
-    _, h2  = tsz(draw, word.capitalize(), f2)          # height of the word itself
-    _, h3a = tsz(draw, "Part of speech:", f3)          # height of the "Part of speech:" label
-    _, h3b = tsz(draw, (pos or "").capitalize(), f3)   # height of the POS value (e.g. "Noun")
-    _, h4  = tsz(draw, "Definition:", f4)              # height of the "Definition:" label
-    h5     = block_height(defn or "", f5, MAX_W_DEFN)  # total height of the wrapped definition text block
-
-    GAP_AFTER_LABEL  = 36    # vertical space in pixels between "Today's word:" and the word below it
-    GAP_AFTER_WORD   = 110   # vertical space between the word and the "Part of speech:" section
-    GAP_BETWEEN_POS  = 14    # vertical space between "Part of speech:" label and its value
-    GAP_AFTER_POS    = 90    # vertical space between the POS value and the "Definition:" section
-    GAP_AFTER_DEFLBL = 28    # vertical space between "Definition:" label and the definition body text
-
-    # sums up the total height of the entire text block including all gaps
-    total_h = (h1 + GAP_AFTER_LABEL +
-               h2 + GAP_AFTER_WORD +
-               h3a + GAP_BETWEEN_POS + h3b + GAP_AFTER_POS +
-               h4 + GAP_AFTER_DEFLBL +
-               h5)
-
-    # calculates the starting y so the whole block is vertically centred, with a slight upward bias of 60px
-    y = max(160, (H - total_h) // 2 - 60)   # max(160,...) ensures we never start too close to the top edge
-
-    # ── Draw each element top-to-bottom ───────────────────────────────────────
-    draw.text((LEFT, y), "Today's word:", font=f1, fill=DARK)   # draws the "Today's word:" label in dark navy
-    y += h1 + GAP_AFTER_LABEL                                   # advances y past the label and its gap
-
-    draw.text((LEFT, y), word.capitalize(), font=f2, fill=WHITE)  # draws the word itself in large white bold text
-    y += h2 + GAP_AFTER_WORD                                      # advances y past the word and its gap
-
-    if pos:                                                           # only draws the POS section if a part of speech was found
-        draw.text((LEFT, y), "Part of speech:", font=f3, fill=DARK)  # draws "Part of speech:" label in dark navy
-        y += h3a + GAP_BETWEEN_POS                                   # advances y past the label
-        draw.text((LEFT, y), pos.capitalize(), font=f3, fill=WHITE)  # draws the POS value (e.g. "Adjective") in white
-        y += h3b + GAP_AFTER_POS                                     # advances y past the POS value and its gap
-
-    draw.text((LEFT, y), "Definition:", font=f4, fill=DARK)   # draws the "Definition:" label in dark navy
-    y += h4 + GAP_AFTER_DEFLBL                                # advances y past the label
-
-    if defn:   # only draws definition text if a definition string was provided
-        draw_wrapped(draw, defn, LEFT, y, f5, WHITE, MAX_W_DEFN, gap=24)  # draws definition as wrapped light white text with extra right margin
-
-    return img   # returns the finished Screen 2 frame as a PIL Image
-
-# ── SCREEN 3  (3 s) ────────────────────────────────────────────────────────────
-def make_screen3(n):
-    # builds one frame of Screen 3 — the prompt image overlaid with a countdown number (3, 2, or 1)
-    img = blank()   # starts with a fresh blue background canvas
-    if os.path.exists(IMG_SCREEN3):                          # checks if the Screen 3 prompt image file exists
-        png = Image.open(IMG_SCREEN3).convert("RGBA")        # opens the image and ensures it has an alpha channel
-        png = png.resize((W, H), Image.LANCZOS)              # scales it to fill the full 1080x1920 canvas
-        try:
-            arr  = np.array(png)                             # converts the image to a numpy pixel array for direct manipulation
-            mask = (arr[:,:,0] < 60) & (arr[:,:,1] < 60) & (arr[:,:,2] < 60)  # creates a boolean mask for near-black pixels
-            arr[mask, 3] = 0                                 # sets the alpha of near-black pixels to 0 (fully transparent)
-            png = Image.fromarray(arr)                       # converts the modified array back to a PIL Image
-        except Exception:
-            pass                                             # silently ignores any numpy errors and uses the image as-is
-        img = img.convert("RGBA")         # converts base canvas to RGBA so alpha compositing works
-        img.alpha_composite(png)          # composites the (now transparent-background) prompt image onto the canvas
-        img = img.convert("RGB")          # converts back to RGB for video frame use
+# ── GRADIENT BACKGROUND ────────────────────────────────────────────────────────
+def gradient_bg(t_color=0.0):
+    t_color = clamp(t_color)
+    if t_color <= 0.5:
+        t2  = t_color * 2.0
+        top = lerp_color(_G_TOP_BLUE,   _G_TOP_ORANGE, t2)
+        bot = lerp_color(_G_BOT_BLUE,   _G_BOT_ORANGE, t2)
     else:
-        print(f"\n⚠️  Screen 3 image not found: {IMG_SCREEN3}")   # warns if the image file is missing
+        t2  = (t_color - 0.5) * 2.0
+        top = lerp_color(_G_TOP_ORANGE, _G_TOP_RED,    t2)
+        bot = lerp_color(_G_BOT_ORANGE, _G_BOT_RED,    t2)
 
-    draw = ImageDraw.Draw(img)   # creates a drawing context to draw the countdown circle and number
-    cr  = 290                    # radius of the countdown circle in pixels
-    ccx = W // 2                 # x coordinate of the circle centre — horizontally centred on the canvas
-    ccy = H - 500                # y coordinate of the circle centre — positioned near the bottom, moved up 80px from original
+    ys  = np.linspace(0, 1, H, dtype=np.float32).reshape(H, 1, 1)
+    row = (np.array(top, dtype=np.float32) * (1 - ys) +
+           np.array(bot, dtype=np.float32) * ys).astype(np.uint8)
+    arr = np.broadcast_to(row, (H, W, 3)).copy()
+    return Image.fromarray(arr, "RGB")
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCREEN 1 — KEN BURNS SLOW ZOOM  (3 s)
+# ══════════════════════════════════════════════════════════════════════════════
+def make_screen1_frame(f, total_frames):
+    img = gradient_bg(0.0)
+    if not os.path.exists(IMG_SCREEN1):
+        return img
+
+    overlay = Image.open(IMG_SCREEN1).convert("RGBA")
+    t       = ease_in_out(f / max(total_frames - 1, 1))
+
+    sw = int((W - 50) + 80 * t)
+    sh = int(overlay.height * sw / overlay.width)
+    overlay = overlay.resize((sw, sh), Image.LANCZOS)
+
+    x = (W  - sw) // 2
+    y = (H  - sh) // 2 - 60
+
+    img = img.convert("RGBA")
+    img.paste(overlay, (x, y), overlay)
+
+    if f < 12:
+        alpha_black = 255 - int(255 * f / 12)
+        black = Image.new("RGBA", (W, H), (0, 0, 0, alpha_black))
+        img.alpha_composite(black)
+
+    return img.convert("RGB")
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCREEN 2 — ANIMATED WORD REVEAL  (8 s)
+# ══════════════════════════════════════════════════════════════════════════════
+def make_screen2_frame(word, pos, defn, f, total_frames):
+    t   = f / FPS
+    img = gradient_bg(0.0).convert("RGBA")
+
+    LEFT       = 70
+    MAX_W_DEFN = W - 340
+
+    f1 = fnt(F_BOLD,   95)
+    f2 = fnt(F_BOLD,  148)
+    f3 = fnt(F_MED,    80)
+    f4 = fnt(F_MED,    80)
+    f5 = fnt(F_LIGHT,  74)
+
+    _d = ImageDraw.Draw(img)
+    _, h1  = tsz(_d, "Today's word:", f1)
+    _, h2  = tsz(_d, word.capitalize(), f2)
+    _, h3a = tsz(_d, "Part of speech:", f3)
+    _, h3b = tsz(_d, (pos or "").capitalize(), f3)
+    _, h4  = tsz(_d, "Definition:", f4)
+
+    def wrapped_h(text, font, max_w, gap=22):
+        words  = text.split()
+        lines, cur = [], []
+        for w in words:
+            test = " ".join(cur + [w])
+            if tsz(_d, test, font)[0] > max_w and cur:
+                lines.append(" ".join(cur)); cur = [w]
+            else:
+                cur.append(w)
+        if cur: lines.append(" ".join(cur))
+        return sum(tsz(_d, l, font)[1] + gap for l in lines)
+
+    h5 = wrapped_h(defn or "", f5, MAX_W_DEFN)
+
+    G1, G2, G3, G4, G5 = 28, 88, 10, 72, 22
+    total_h = h1 + G1 + h2 + G2 + h3a + G3 + h3b + G4 + h4 + G5 + h5
+    y0      = max(130, (H - total_h) // 2 - 80)
+
+    y_lbl  = y0
+    y_word = y0 + h1 + G1
+    y_pos1 = y_word + h2 + G2
+    y_pos2 = y_pos1 + h3a + G3
+    y_def1 = y_pos2 + h3b + G4
+    y_def2 = y_def1 + h4  + G5
+
+    SLIDE = 95
+
+    if t >= 0.0:
+        pe  = ease_out(clamp(t / 1.1))
+        alf = int(255 * clamp(t / 0.5))
+        ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od  = ImageDraw.Draw(ov)
+        draw_text_stroked(
+            od,
+            (LEFT, y_lbl + int(SLIDE * (1 - pe))),
+            "Today's word:", f1,
+            fill=DARK + (alf,),
+            stroke_fill=WHITE + (alf,),
+            stroke_width=2,
+        )
+        img.alpha_composite(ov)
+
+    if t >= 1.2:
+        p = clamp((t - 1.2) / 0.65)
+        if p < 0.55:
+            scale_anim = ease_out(p / 0.55) * 1.13
+        else:
+            scale_anim = 1.13 - 0.13 * ease_in_out((p - 0.55) / 0.45)
+        if t > 5.8:
+            scale_anim = 1.0 + 0.012 * math.sin((t - 5.8) * math.pi * 1.8)
+
+        alf  = int(255 * clamp((t - 1.2) / 0.25))
+        sz   = max(20, int(148 * scale_anim))
+        f2s  = fnt(F_BOLD, sz)
+        wt   = word.capitalize()
+        ov   = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od   = ImageDraw.Draw(ov)
+        ww2, wh2 = tsz(od, wt, f2s)
+        od.text(((W - ww2) // 2, y_word - (wh2 - h2) // 2),
+                wt, font=f2s, fill=WHITE + (alf,))
+        img.alpha_composite(ov)
+
+    if t >= 2.9 and pos:
+        pe  = ease_out(clamp((t - 2.9) / 0.8))
+        alf = int(255 * pe)
+        sl  = int(SLIDE * 0.5 * (1 - pe))
+        ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od  = ImageDraw.Draw(ov)
+        draw_text_stroked(
+            od,
+            (LEFT, y_pos1 + sl),
+            "Part of speech:", f3,
+            fill=DARK + (alf,),
+            stroke_fill=WHITE + (alf,),
+            stroke_width=2,
+        )
+        od.text((LEFT, y_pos2 + sl), pos.capitalize(),
+                font=f3, fill=WHITE + (alf,))
+        img.alpha_composite(ov)
+
+    if t >= 4.4:
+        pe  = ease_out(clamp((t - 4.4) / 1.0))
+        alf = int(255 * pe)
+        sl  = int(SLIDE * 0.4 * (1 - pe))
+        ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od  = ImageDraw.Draw(ov)
+        draw_text_stroked(
+            od,
+            (LEFT, y_def1 + sl),
+            "Definition:", f4,
+            fill=DARK + (alf,),
+            stroke_fill=WHITE + (alf,),
+            stroke_width=2,
+        )
+        if defn:
+            draw_wrapped_on(od, defn, LEFT, y_def2 + sl, f5,
+                            WHITE + (alf,), MAX_W_DEFN, gap=22)
+        img.alpha_composite(ov)
+
+    return img.convert("RGB")
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCREEN 3 — PULSING COUNTDOWN  (3 s)
+# ══════════════════════════════════════════════════════════════════════════════
+def make_screen3_frame(n, f_in_sec, fps):
+    img = gradient_bg(0.0)
+    if os.path.exists(IMG_SCREEN3):
+        png = Image.open(IMG_SCREEN3).convert("RGBA")
+        png = png.resize((W, H), Image.LANCZOS)
+        try:
+            arr  = np.array(png)
+            mask = (arr[:, :, 0] < 60) & (arr[:, :, 1] < 60) & (arr[:, :, 2] < 60)
+            arr[mask, 3] = 0
+            png  = Image.fromarray(arr)
+        except Exception:
+            pass
+        img = img.convert("RGBA")
+        img.alpha_composite(png)
+        img = img.convert("RGB")
+
+    draw = ImageDraw.Draw(img)
+    t    = f_in_sec / fps
+
+    if t < 0.22:
+        scale = 0.45 + 0.70 * ease_out(t / 0.22)
+    elif t < 0.42:
+        scale = 1.15 - 0.15 * ease_in_out((t - 0.22) / 0.20)
+    else:
+        scale = 1.0 + 0.010 * math.sin(t * math.pi * 3.5)
+
+    cr  = max(10, int(285 * scale))
+    ccx = W // 2
+    ccy = H - 500
+
+    c_bg  = (88, 155, 218)
+    c_bdr = (28,  88, 152)
     draw.ellipse([ccx - cr, ccy - cr, ccx + cr, ccy + cr],
-                 fill=CIRCLE_BG, outline=CIRCLE_BDR, width=14)  # draws the filled circle with a border
+                 fill=c_bg, outline=c_bdr, width=14)
 
-    f_num = fnt(F_BOLD, 360)               # large bold font for the countdown digit
-    num   = str(n)                         # converts the countdown number (3, 2, or 1) to a string for drawing
-    nw, nh = tsz(draw, num, f_num)         # measures the width and height of the digit
-    draw.text((ccx - nw // 2, ccy - nh // 2 - 69), num, font=f_num, fill=DARK)
-    # draws the number centred inside the circle; -69 shifts it up slightly so it looks optically centred
-    return img   # returns the finished countdown frame as a PIL Image
+    sz    = max(20, int(360 * scale))
+    f_num = fnt(F_BOLD, sz)
+    num   = str(n)
+    nw, nh = tsz(draw, num, f_num)
+    draw.text((ccx - nw // 2, ccy - nh // 2 - int(62 * scale)),
+              num, font=f_num, fill=DARK)
+    return img
 
-# ── SCREEN 4  (60 s) ───────────────────────────────────────────────────────────
-def make_screen4(word, secs_left):
-    # builds one frame of Screen 4 — the 60-second speaking timer with the word shown at the top
-    img  = blank()              # starts with a fresh blue background canvas
-    draw = ImageDraw.Draw(img)  # creates a drawing context for text and shapes
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCREEN 4 — FULL UPGRADED TIMER  (60 s)
+# ══════════════════════════════════════════════════════════════════════════════
+def make_screen4_frame(word, secs_left):
+    secs_left = max(0.0, secs_left)
+    elapsed   = 60.0 - secs_left
 
-    f_lbl = fnt(F_MED, 105)               # medium-weight font for the "Word: X" label at the top
-    label = f"Word: {word.capitalize()}"  # builds the label string e.g. "Word: Resilient"
-    tw, _ = tsz(draw, label, f_lbl)       # measures the width of the label to centre it
-    draw.text(((W - tw) // 2, 250), label, font=f_lbl, fill=WHITE)
-    # draws the label horizontally centred, at y=250 (moved down from original 140)
+    if secs_left > 30:
+        t_col = 0.0
+    elif secs_left > 10:
+        t_col = 0.5 * (30 - secs_left) / 20.0
+    else:
+        t_col = 0.5 + 0.5 * (10 - secs_left) / 10.0
 
-    cx_c, cy_c = W // 2, H // 2 + 160   # centre coordinates of the timer circle — horizontally centred, in the lower half
-    r = 340                              # radius of the timer circle in pixels
+    img  = gradient_bg(t_col)
+    draw = ImageDraw.Draw(img)
+
+    f_lbl  = fnt(F_MED, 100)
+    label  = f"Word: {word.capitalize()}"
+    blinks = (10, 20, 30, 40, 50)
+    is_blink = any(abs(secs_left - bm) < 0.55 for bm in blinks)
+    lw, _  = tsz(draw, label, f_lbl)
+    draw.text(((W - lw) // 2, 195), label, font=f_lbl,
+              fill=YELLOW if is_blink else WHITE)
+
+    cx_c = W // 2
+    cy_c = H // 2 + 90
+
+    if secs_left <= 10:
+        pulse_speed, pulse_amp = 4.2, 0.028
+    else:
+        pulse_speed, pulse_amp = 1.2, 0.010
+
+    r = int(318 * (1.0 + pulse_amp * math.sin(elapsed * math.pi * pulse_speed)))
+
+    if secs_left > 30:
+        c_bg  = ( 80, 148, 210)
+        c_bdr = ( 28,  88, 152)
+        arc_rgba = (255, 255, 255, 215)
+    elif secs_left > 10:
+        tt    = (30 - secs_left) / 20.0
+        c_bg  = lerp_color(( 80, 148, 210), (195, 118,  42), tt)
+        c_bdr = lerp_color(( 28,  88, 152), (148,  70,  16), tt)
+        arc_rgba = (255, int(lerp(255, 155, tt)), int(lerp(255, 38, tt)), 215)
+    else:
+        tt    = (10 - secs_left) / 10.0
+        c_bg  = lerp_color((195, 118,  42), (195,  38,  38), tt)
+        c_bdr = lerp_color((148,  70,  16), (132,  16,  16), tt)
+        arc_rgba = (255, int(lerp(155, 52, tt)), int(lerp(38, 38, tt)), 215)
 
     draw.ellipse([cx_c - r, cy_c - r, cx_c + r, cy_c + r],
-                 fill=CIRCLE_BG, outline=CIRCLE_BDR, width=16)  # draws the filled circle with a border
+                 fill=c_bg, outline=c_bdr, width=18)
 
-    progress = max(0.0, secs_left / 60.0)   # calculates progress as a 0.0-1.0 fraction of 60 seconds remaining
-    sweep    = int(360 * progress)           # converts the fraction to degrees (0-360) for the arc sweep
+    sweep = int(360 * secs_left / 60.0)
+    if sweep > 0:
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(ov)
+        od.arc([cx_c - r, cy_c - r, cx_c + r, cy_c + r],
+               start=-90, end=-90 + sweep, fill=arc_rgba, width=28)
+        img  = composite(img, ov)
+        draw = ImageDraw.Draw(img)
 
-    if sweep > 0:   # only draws the arc if there's any time remaining
-        arc_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))   # creates a transparent overlay image for the arc
-        ad = ImageDraw.Draw(arc_img)                          # drawing context for the overlay
-        ad.arc([cx_c - r, cy_c - r, cx_c + r, cy_c + r],
-               start=-90, end=-90 + sweep,
-               fill=(255, 255, 255, 220), width=26)
-        # draws a semi-transparent white arc starting from the top (-90 deg) sweeping clockwise as time decreases
-        img = img.convert("RGBA")           # converts base canvas to RGBA for compositing
-        img.alpha_composite(arc_img)        # composites the arc overlay onto the canvas
-        img = img.convert("RGB")            # converts back to RGB for video frame use
-        draw = ImageDraw.Draw(img)          # recreates the drawing context on the updated image
+    f_num  = fnt(F_BOLD, 360)
+    num    = str(max(0, int(math.ceil(secs_left))))
+    nw, nh = tsz(draw, num, f_num)
+    num_col = WHITE if secs_left <= 10 else DARK
+    num_x   = cx_c - nw // 2
+    num_y   = cy_c - nh // 2 - 65
 
-    f_num = fnt(F_BOLD, 360)                             # large bold font for the countdown number inside the circle
-    num   = str(max(0, int(math.ceil(secs_left))))       # rounds up secs_left and converts to string; clamps at 0
-    nw, nh = tsz(draw, num, f_num)                       # measures the width and height of the number
-    draw.text((cx_c - nw // 2, cy_c - nh // 2 - 69), num, font=f_num, fill=DARK)
-    # draws the number centred inside the circle; -69 shifts it up so it looks optically centred in the circle
-    return img   # returns the finished timer frame as a PIL Image
+    draw.text((num_x, num_y), num, font=f_num, fill=num_col)
 
-# ── AUDIO ──────────────────────────────────────────────────────────────────────
-SAMPLE_RATE = 44100   # audio sample rate in Hz — standard CD quality (44,100 samples per second)
+    if 28.8 <= secs_left <= 31.2:
+        t_fl  = ease_in_out(1.0 - abs(secs_left - 30.0) / 1.2)
+        alf   = int(235 * t_fl)
+        f_hf  = fnt(F_BOLD, 116)
+        hw, hh = tsz(draw, "HALFWAY!", f_hf)
+        pad   = 30
+        y_hf  = cy_c - r - 185
+        ov    = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od    = ImageDraw.Draw(ov)
+        try:
+            od.rounded_rectangle(
+                [(W // 2 - hw // 2 - pad,  y_hf - pad // 2),
+                 (W // 2 + hw // 2 + pad,  y_hf + hh + pad)],
+                radius=36, fill=YELLOW + (alf,))
+        except AttributeError:
+            od.rectangle(
+                [(W // 2 - hw // 2 - pad,  y_hf - pad // 2),
+                 (W // 2 + hw // 2 + pad,  y_hf + hh + pad)],
+                fill=YELLOW + (alf,))
+        draw_text_stroked(od, ((W - hw) // 2, y_hf), "HALFWAY!", f_hf,
+                          fill=DARK + (alf,),
+                          stroke_fill=(255, 255, 255, alf),
+                          stroke_width=2)
+        img  = composite(img, ov)
+        draw = ImageDraw.Draw(img)
+
+    bx1, bx2 = 80, W - 80
+    by,  bh  = H - 155, 20
+    br       = 10
+    try:
+        draw.rounded_rectangle([bx1, by, bx2, by + bh],
+                                radius=br, fill=(38, 42, 72))
+    except AttributeError:
+        draw.rectangle([bx1, by, bx2, by + bh], fill=(38, 42, 72))
+    fill_w = int((bx2 - bx1) * secs_left / 60.0)
+    if fill_w > br * 2:
+        fc = lerp_color((95, 190, 255), (255, 65, 65), 1.0 - secs_left / 60.0)
+        try:
+            draw.rounded_rectangle([bx1, by, bx1 + fill_w, by + bh],
+                                    radius=br, fill=fc)
+        except AttributeError:
+            draw.rectangle([bx1, by, bx1 + fill_w, by + bh], fill=fc)
+
+    f_cmt = fnt(F_MED, 62)
+    cmt   = "Comment your attempt below! 👇"
+    cw, _ = tsz(draw, cmt, f_cmt)
+    draw.text(((W - cw) // 2, H - 262), cmt, font=f_cmt, fill=WHITE)
+
+    if secs_left <= 3.0:
+        t_end = ease_in_out(1.0 - secs_left / 3.0)
+        alf   = int(215 * t_end)
+        f_end = fnt(F_BOLD, 90)
+        lines = ["Follow for", "tomorrow's word! 🔔"]
+        ov    = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od    = ImageDraw.Draw(ov)
+        od.rectangle([0, 0, W, H], fill=(0, 0, 0, alf))
+        th    = sum(tsz(od, l, f_end)[1] + 24 for l in lines)
+        yy    = (H - th) // 2
+        for line in lines:
+            lw2, lh2 = tsz(od, line, f_end)
+            od.text(((W - lw2) // 2, yy), line, font=f_end,
+                    fill=WHITE + (alf,))
+            yy += lh2 + 24
+        img = composite(img, ov)
+
+    return img
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AUDIO
+# ══════════════════════════════════════════════════════════════════════════════
+SAMPLE_RATE = 44100
 
 def gen_beep(freq=880, dur=0.22, vol=0.7):
-    # generates a short beep tone as a numpy array of 16-bit PCM audio samples
-    n = int(SAMPLE_RATE * dur)             # total number of audio samples for the beep duration
-    t = np.linspace(0, dur, n, False)      # creates an evenly spaced time array from 0 to dur seconds
-    d = np.sin(2 * np.pi * freq * t) * vol # generates a sine wave at the given frequency and scales it by volume
-    fade = max(1, int(n * 0.08))           # calculates how many samples to use for fade-in/out (8% of total)
-    d[:fade]  *= np.linspace(0, 1, fade)   # applies a linear fade-in at the start to avoid a click/pop
-    d[-fade:] *= np.linspace(1, 0, fade)   # applies a linear fade-out at the end to avoid a click/pop
-    return (d * 32767).astype(np.int16)    # scales to the 16-bit integer range and converts to int16 PCM format
+    n    = int(SAMPLE_RATE * dur)
+    t    = np.linspace(0, dur, n, False)
+    d    = np.sin(2 * np.pi * freq * t) * vol
+    fade = max(1, int(n * 0.08))
+    d[:fade]  *= np.linspace(0, 1, fade)
+    d[-fade:] *= np.linspace(1, 0, fade)
+    return (d * 32767).astype(np.int16)
 
 def build_audio():
-    # constructs the full 75-second audio track with three beeps at the countdown moments and writes it to a WAV file
-    total = 75                                              # total audio duration in seconds (matches full reel length)
-    audio = np.zeros(int(SAMPLE_RATE * total), dtype=np.int16)  # creates a silent audio array for the full duration
-    for t, freq in [(12.0, 750), (13.0, 750), (14.0, 1100)]:   # three beeps: two low ones then a higher one at go
-        beep = gen_beep(freq=freq)          # generates the beep tone at the specified frequency
-        s    = int(SAMPLE_RATE * t)         # converts the beep start time (seconds) to a sample index
-        audio[s:s + len(beep)] += beep      # mixes the beep into the audio array at the correct position
-    with wave.open(TMP_AUDIO, "w") as wf:   # opens a new WAV file for writing
-        wf.setnchannels(1)                  # sets to mono (1 channel)
-        wf.setsampwidth(2)                  # sets sample width to 2 bytes (16-bit audio)
-        wf.setframerate(SAMPLE_RATE)        # sets the sample rate to 44100 Hz
-        wf.writeframes(audio.tobytes())     # writes all the audio samples as raw bytes into the WAV file
+    total = 75
+    audio = np.zeros(int(SAMPLE_RATE * total), dtype=np.int32)
 
-# ── WORD FETCH ─────────────────────────────────────────────────────────────────
-# hardcoded list of fallback words used if the internet-based word API is unavailable
+    def mix(t_sec, beep_arr):
+        s = int(SAMPLE_RATE * t_sec)
+        e = s + len(beep_arr)
+        if e <= len(audio):
+            audio[s:e] += beep_arr.astype(np.int32)
+
+    for t_b, freq in [(11.0, 700), (12.0, 700), (13.0, 1250)]:
+        mix(t_b, gen_beep(freq=freq, dur=0.28, vol=0.82))
+
+    for elapsed_10 in (10, 20, 30, 40):
+        mix(14 + elapsed_10, gen_beep(freq=1050, dur=0.08, vol=0.38))
+
+    for i in range(5):
+        mix(69 + i, gen_beep(freq=1450, dur=0.14, vol=0.60))
+
+    audio = np.clip(audio, -32767, 32767).astype(np.int16)
+    with wave.open(TMP_AUDIO, "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(audio.tobytes())
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  WORD FETCH
+# ══════════════════════════════════════════════════════════════════════════════
 FALLBACKS = [
     ("resilient",   "adjective", "Able to recover quickly from difficult conditions."),
     ("eloquent",    "adjective", "Fluent or persuasive in speaking or writing."),
@@ -344,184 +574,228 @@ FALLBACKS = [
     ("audacious",   "adjective", "Showing a willingness to take surprisingly bold risks."),
     ("empathy",     "noun",      "The ability to understand and share the feelings of another."),
     ("deliberate",  "adjective", "Done consciously and intentionally; careful and unhurried."),
+    ("luminous",    "adjective", "Bright and emitting or reflecting light strongly."),
+    ("persevere",   "verb",      "Continue in a course of action despite difficulty."),
 ]
 
 def get_word():
-    # tries to fetch a random real English word with its definition from the internet; falls back to the hardcoded list
     try:
-        from wonderwords import RandomWord   # wonderwords library generates random English words
-        import requests                      # requests library is used to call the dictionary API over HTTP
-        rw = RandomWord()                    # creates a RandomWord instance for generating words
-        for _ in range(15):                  # tries up to 15 different random words to find one with a valid definition
-            w = rw.word()                    # generates one random English word
+        from wonderwords import RandomWord
+        import requests
+        rw = RandomWord()
+        for _ in range(15):
+            w = rw.word()
             try:
                 r = requests.get(
-                    f"https://api.dictionaryapi.dev/api/v2/entries/en/{w}", timeout=5)
-                # calls the free dictionary API with the random word; timeout=5 prevents hanging if the server is slow
-                if r.status_code == 200:                          # 200 means the API found the word successfully
-                    m    = r.json()[0]["meanings"]                # extracts the list of meanings from the JSON response
-                    pos  = m[0]["partOfSpeech"]                   # takes the part of speech from the first meaning
-                    defn = m[0]["definitions"][0]["definition"]   # takes the first definition text
-                    if defn and len(defn) > 10:   # only accepts definitions longer than 10 chars (avoids empty/stub entries)
-                        return w, pos, defn       # returns the word, part of speech, and definition as a tuple
-            except: continue   # silently skips this word if any network or parsing error occurs and tries the next
-    except: pass   # silently falls through to the fallback list if wonderwords or requests aren't installed
-    return random.choice(FALLBACKS)   # picks and returns a random word from the hardcoded fallback list
+                    f"https://api.dictionaryapi.dev/api/v2/entries/en/{w}",
+                    timeout=5)
+                if r.status_code == 200:
+                    m    = r.json()[0]["meanings"]
+                    pos  = m[0]["partOfSpeech"]
+                    defn = m[0]["definitions"][0]["definition"]
+                    if defn and len(defn) > 10:
+                        return w, pos, defn
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return random.choice(FALLBACKS)
 
-# ── MAIN ───────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  BGM PICKER  — random from "audios/" folder, fallback to bgm.mp3
+# ══════════════════════════════════════════════════════════════════════════════
+def pick_bgm():
+    """
+    Returns (path_or_None, display_name).
+    Priority:
+      1. Random file from  <script_dir>/audios/  (mp3/wav/aac/m4a)
+      2. bgm.mp3 / bgm.wav sitting next to the script
+      3. None  →  no background music
+    """
+    audios_dir = os.path.join(SCRIPT_DIR, "audios")
+    if os.path.isdir(audios_dir):
+        candidates = [
+            f for f in os.listdir(audios_dir)
+            if f.lower().endswith((".mp3", ".wav", ".aac", ".m4a"))
+        ]
+        if candidates:
+            chosen = random.choice(candidates)
+            return os.path.join(audios_dir, chosen), f"audios/{chosen}"
+
+    for name in ("bgm.mp3", "bgm.wav", "BGM.mp3", "BGM.wav"):
+        path = os.path.join(SCRIPT_DIR, name)
+        if os.path.exists(path):
+            return path, name
+
+    return None, None
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MAIN
+# ══════════════════════════════════════════════════════════════════════════════
 def main():
-    # ── Parse arguments ────────────────────────────────────────────────────────
-    skip_upload = "--no-upload" in sys.argv   # checks if the user passed --no-upload flag to skip Instagram posting
+    skip_upload = "--no-upload" in sys.argv
 
-    # ── Import Telegram notifier ───────────────────────────────────────────────
     try:
-        import telegram_notifier as tg   # tries to import the optional Telegram notification module
-        tg_ok = True                     # sets flag to True so Telegram notifications are enabled
+        import telegram_notifier as tg
+        tg_ok = True
     except ImportError:
-        tg_ok = False   # sets flag to False if the module isn't found so all tg calls are safely skipped
+        tg_ok = False
         print("⚠️  telegram_notifier.py not found — Telegram notifications disabled.")
 
-    print("🎬  Instagram Word Challenge Reel Generator")
-    print("─" * 45)   # prints a decorative separator line in the terminal
+    print("🎬  Word Challenge Reel Generator  [v2 — UPGRADED]")
+    print("─" * 52)
 
-    # ── Notify start ───────────────────────────────────────────────────────────
     if tg_ok:
-        tg.notify_start()   # sends a Telegram message saying the reel generation has started
+        tg.notify_start()
 
-    # checks whether each required image asset exists on disk and prints the result
-    for label, path in [("Screen 1 image", IMG_SCREEN1), ("Screen 3 image", IMG_SCREEN3)]:
-        if not os.path.exists(path):
-            print(f"⚠️  {label} not found: {path}")          # warns if a required image is missing
-        else:
-            print(f"✅  {label} found: {os.path.basename(path)}")   # confirms the image was found
+    for label, path in [("Screen 1 image", IMG_SCREEN1),
+                        ("Screen 3 image", IMG_SCREEN3)]:
+        ok = os.path.exists(path)
+        print(f"  {'✅' if ok else '⚠️  NOT FOUND'}  {label}: {os.path.basename(path)}")
+
+    # ── Pick background music ─────────────────────────────────────────────────
+    bgm_path, bgm_display = pick_bgm()
+    if bgm_path:
+        print(f"  🎵  Background music selected: {bgm_display}")
+    else:
+        print("  🔇  No audio found — add files to an 'audios/' folder for background music")
 
     print("\n📖  Fetching word…")
     try:
-        word, pos, defn = get_word()   # calls get_word() to retrieve the word, POS, and definition
+        word, pos, defn = get_word()
     except Exception as e:
         if tg_ok:
-            tg.notify_error("Word fetch", str(e))   # sends a Telegram error notification if word fetching failed
-        raise   # re-raises the exception so the script stops with a visible error
+            tg.notify_error("Word fetch", str(e))
+        raise
 
-    # prints the fetched word details to the terminal for confirmation
     print(f"    Word      : {word}")
     print(f"    POS       : {pos or 'N/A'}")
-    snippet = (defn or "")[:65] + ("…" if defn and len(defn) > 65 else "")   # truncates long definitions to 65 chars for display
-    print(f"    Definition: {snippet}")
-    print()
+    snippet = (defn or "")[:65] + ("…" if defn and len(defn) > 65 else "")
+    print(f"    Definition: {snippet}\n")
 
-    # ── Notify word chosen ─────────────────────────────────────────────────────
     if tg_ok:
-        tg.notify_word(word, pos, defn)   # sends a Telegram message with the chosen word details
+        tg.notify_word(word, pos, defn)
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")                   # creates the four-character codec code for MP4 video
-    writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))  # opens a video file writer at the temp path with the configured FPS and resolution
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))
 
-    print("▶  Screen 1/4  Opener      (4s) …", end=" ", flush=True)
-    s1 = make_screen1()                               # generates the Screen 1 image (opener)
-    for _ in range(4 * FPS): writer.write(pil2cv(s1)) # writes the same frame 120 times (4s x 30fps) to create 4 seconds of video
+    print("▶  Screen 1/4  Ken Burns opener  (3 s) …", end=" ", flush=True)
+    s1_tot = 3 * FPS
+    for f in range(s1_tot):
+        writer.write(pil2cv(make_screen1_frame(f, s1_tot)))
     print("✓")
 
-    print("▶  Screen 2/4  Word reveal (8s) …", end=" ", flush=True)
-    s2 = make_screen2(word, pos, defn)                # generates the Screen 2 image (word reveal) using the fetched word data
-    for _ in range(8 * FPS): writer.write(pil2cv(s2)) # writes it 240 times (8s x 30fps) for 8 seconds of video
+    print("▶  Screen 2/4  Animated reveal   (8 s) …", end=" ", flush=True)
+    s2_tot = 8 * FPS
+    for f in range(s2_tot):
+        writer.write(pil2cv(make_screen2_frame(word, pos, defn, f, s2_tot)))
     print("✓")
 
-    print("▶  Screen 3/4  Countdown   (3s) …", end=" ", flush=True)
-    for n in [3, 2, 1]:                               # loops through the countdown numbers 3, 2, 1
-        s3 = make_screen3(n)                          # generates the countdown frame for this number
-        for _ in range(1 * FPS): writer.write(pil2cv(s3))  # writes it 30 times (1s x 30fps) so each number shows for exactly 1 second
+    print("▶  Screen 3/4  Pulsing countdown (3 s) …", end=" ", flush=True)
+    for n in [3, 2, 1]:
+        for f in range(FPS):
+            writer.write(pil2cv(make_screen3_frame(n, f, FPS)))
     print("✓")
 
-    print("▶  Screen 4/4  Timer      (60s) …")
-    total = 60 * FPS   # total number of frames for the 60-second timer screen (1800 frames)
-    for f in range(total):                               # loops through every frame of the timer screen
-        secs = 60 - f / FPS                              # calculates how many seconds are left at this frame
-        writer.write(pil2cv(make_screen4(word, secs)))   # generates and writes the timer frame for this moment in time
-        if f % (3 * FPS) == 0:                           # every 3 seconds, updates the progress bar in the terminal
-            pct = int(f / total * 100)                   # calculates the percentage of frames written so far
-            bar = "█" * (pct // 5) + "░" * (20 - pct // 5)  # builds a 20-character progress bar string
-            print(f"    [{bar}] {pct}%  ", end="\r")    # prints the progress bar, overwriting the same line each time
-    print(f"    [{'█'*20}] 100% ✓")   # prints the completed progress bar when all frames are done
-    writer.release()   # finalises and closes the video file so it can be read by other programs
+    print("▶  Screen 4/4  Upgraded timer   (60 s) …")
+    s4_tot = 60 * FPS
+    for f in range(s4_tot):
+        secs = 60.0 - f / FPS
+        writer.write(pil2cv(make_screen4_frame(word, secs)))
+        if f % (3 * FPS) == 0:
+            pct = int(f / s4_tot * 100)
+            bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+            print(f"    [{bar}] {pct}%  ", end="\r")
+    print(f"    [{'█' * 20}] 100% ✓")
+    writer.release()
 
     print("\n🔊  Building audio…", end=" ", flush=True)
-    build_audio()   # generates the beep audio and writes it to the temp WAV file
+    build_audio()
     print("✓")
 
     print("🎞   Merging video + audio…", end=" ", flush=True)
-    # builds the ffmpeg command to combine the silent video and the audio WAV into a final compressed MP4
-    cmd = ["ffmpeg", "-y",                               # -y overwrites the output file without asking
-           "-i", TMP_VIDEO, "-i", TMP_AUDIO,            # specifies the two input files: video and audio
-           "-c:v", "libx264", "-preset", "fast", "-crf", "22",   # encodes video with H.264, fast preset, quality level 22
-           "-c:a", "aac", "-b:a", "128k", "-shortest", OUTPUT]   # encodes audio as AAC at 128kbps; -shortest stops at the shorter stream
-    r = subprocess.run(cmd, capture_output=True)   # runs the ffmpeg command and captures its output
-    if r.returncode != 0:   # if ffmpeg failed (non-zero exit code)
-        subprocess.run(["cp" if os.name != "nt" else "copy",
-                        TMP_VIDEO, OUTPUT], shell=(os.name == "nt"))   # falls back to copying the silent video as the output
-        print("(no ffmpeg — saved without audio)")   # notifies the user that audio merging was skipped
+    if bgm_path:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", TMP_VIDEO,
+            "-i", TMP_AUDIO,
+            "-i", bgm_path,
+            "-filter_complex",
+            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.3[aout]",
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:a", "aac", "-b:a", "128k", "-shortest", OUTPUT,
+        ]
     else:
-        print("✓")   # confirms successful ffmpeg merge
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", TMP_VIDEO, "-i", TMP_AUDIO,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:a", "aac", "-b:a", "128k", "-shortest", OUTPUT,
+        ]
 
-    mb = os.path.getsize(OUTPUT) / 1024 / 1024   # calculates the output file size in megabytes
-    print(f"\n✅  Saved → {OUTPUT}  ({mb:.1f} MB)")   # prints the output file path and size
-    print(f"    Word     : {word.upper()}")            # prints the word in uppercase for visibility
-    print(f"    Duration : 75s  |  {W}×{H}  |  9:16 Reel")   # prints reel duration and resolution info
+    r = subprocess.run(cmd, capture_output=True)
+    if r.returncode != 0:
+        fallback = "copy" if os.name == "nt" else "cp"
+        subprocess.run([fallback, TMP_VIDEO, OUTPUT], shell=(os.name == "nt"))
+        print("(ffmpeg unavailable — saved without audio)")
+    else:
+        print("✓")
 
-    # ── Notify render done + send video preview ────────────────────────────────
+    mb = os.path.getsize(OUTPUT) / 1024 / 1024
+    print(f"\n✅  Saved → {OUTPUT}  ({mb:.1f} MB)")
+    print(f"    Word     : {word.upper()}")
+    print(f"    Duration : 74 s  |  {W}×{H}  |  9:16 Reel")
+
     if tg_ok:
-        tg.notify_render_done(OUTPUT)   # sends a Telegram message saying the render is complete
+        tg.notify_render_done(OUTPUT)
         tg.send_video(
             OUTPUT,
             caption=f"🎬 Preview: Today's reel — word is <b>{word.upper()}</b>",
-        )   # sends the finished video file directly to Telegram as a preview
+        )
 
-    # ── Instagram auto-upload ──────────────────────────────────────────────────
     if skip_upload:
-        print("\n⏭   Skipping Instagram upload (--no-upload flag).")   # confirms the upload was intentionally skipped
+        print("\n⏭   Skipping Instagram upload (--no-upload flag).")
         if tg_ok:
-            tg.notify_skipped("--no-upload flag was passed.")   # notifies Telegram that upload was skipped
+            tg.notify_skipped("--no-upload flag was passed.")
     else:
         print("\n" + "─" * 45)
         print("📱  Uploading to Instagram…")
         print("─" * 45)
         if tg_ok:
-            tg.notify_upload_start()   # sends a Telegram message saying the Instagram upload is starting
+            tg.notify_upload_start()
         try:
-            from instagram_uploader import upload_reel   # imports the Instagram upload module
+            from instagram_uploader import upload_reel
             post_id = upload_reel(
-                video_path=OUTPUT,   # path to the finished video file
-                word=word,           # the word used in this reel (for the caption)
-                pos=pos,             # part of speech (for the caption)
-                defn=defn,           # definition (for the caption)
-            )
-            print(f"\n🎉  Reel is LIVE on Instagram!  (Post ID: {post_id})")   # confirms successful upload with the post ID
+                video_path=OUTPUT, word=word, pos=pos, defn=defn)
+            print(f"\n🎉  Reel is LIVE on Instagram!  (Post ID: {post_id})")
             print("    Open the Instagram app to see it on your profile.")
             if tg_ok:
-                tg.notify_live(post_id, word)   # sends a Telegram message with the live post ID
+                tg.notify_live(post_id, word)
         except ImportError:
             msg = "instagram_uploader.py not found — skipping upload."
-            print(f"⚠️  {msg}")   # warns if the instagram_uploader module isn't in the folder
+            print(f"⚠️  {msg}")
             if tg_ok:
-                tg.notify_skipped(msg)   # notifies Telegram the upload was skipped due to missing module
+                tg.notify_skipped(msg)
         except ValueError as e:
-            if "not set" in str(e):   # catches the specific error raised when credentials are not configured
+            if "not set" in str(e):
                 msg = f"Credentials not configured:\n{e}"
-                print(f"⚠️  Upload skipped — {msg}")   # tells the user their Instagram credentials are missing
+                print(f"⚠️  Upload skipped — {msg}")
                 if tg_ok:
                     tg.notify_skipped(msg)
             else:
-                print(f"❌  Upload error:\n    {e}")            # prints any other ValueError that occurred
-                print("    Video saved locally as:", OUTPUT)   # reassures the user the video is still saved
+                print(f"❌  Upload error:\n    {e}")
+                print("    Video saved locally as:", OUTPUT)
                 if tg_ok:
-                    tg.notify_error("Instagram upload", str(e))   # notifies Telegram of the upload error
+                    tg.notify_error("Instagram upload", str(e))
         except Exception as e:
-            print(f"❌  Upload failed:\n    {e}")                       # catches any unexpected upload error
-            print("    The video is still saved locally as:", OUTPUT)  # reassures the user the video is still saved
+            print(f"❌  Upload failed:\n    {e}")
+            print("    The video is still saved locally as:", OUTPUT)
             if tg_ok:
-                tg.notify_error("Instagram upload", str(e))   # notifies Telegram of the unexpected error
+                tg.notify_error("Instagram upload", str(e))
 
-    print("\n📱  Done!")   # prints a final completion message to the terminal
+    print("\n📱  Done!")
+
 
 if __name__ == "__main__":
-    main()   # runs the main() function only when the script is executed directly (not when imported as a module)
+    main()
