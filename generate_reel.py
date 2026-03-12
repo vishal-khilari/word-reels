@@ -1,6 +1,6 @@
 """
-Instagram Word Challenge Reel Generator  +  Auto-Upload  [v2 — UPGRADED]
-═══════════════════════════════════════════════════════════════════════════
+Instagram Word Challenge Reel Generator  [v3 — FINAL]
+═══════════════════════════════════════════════════════
   Screen 1 (3 s)  : Ken Burns slow-zoom on opener image
   Screen 2 (8 s)  : Animated word reveal — elements slide/bounce in
   Screen 3 (3 s)  : Pulsing countdown 3 → 2 → 1 with bounce animation
@@ -10,17 +10,13 @@ Instagram Word Challenge Reel Generator  +  Auto-Upload  [v2 — UPGRADED]
                     "Comment below 👇" CTA, end card last 3 s
 
   Audio            : Countdown beeps + 10-second ticks + urgency beeps
-
-  RANDOM MUSIC     : Place audio files (mp3/wav/aac/m4a) inside an
-                     "audios" sub-folder next to this script.
-                     One will be chosen at random each run and mixed
-                     at 30 % volume over the whole reel.
-                     Fallback: a single bgm.mp3 / bgm.wav in this folder.
+  Random Music     : Place mp3/wav/aac/m4a files in an "audios/" sub-folder.
+                     One is chosen at random each run, mixed at 30% volume.
 
 Run:  python3 generate_reel.py
       python3 generate_reel.py --no-upload   ← skip Instagram upload
 
-Requires: pip install opencv-python pillow numpy requests wonderwords
+Requires: pip install opencv-python pillow numpy requests
           ffmpeg must be on PATH for audio merging
 """
 
@@ -49,7 +45,7 @@ _WIN = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")
 
 def _fp(gf_name, dv_name="DejaVuSans-Bold.ttf"):
     for folder, name in [(_GF, gf_name), (_WIN, "arialbd.ttf"),
-                         (_WIN, "arial.ttf"),  (_DV,  dv_name)]:
+                         (_WIN, "arial.ttf"), (_DV, dv_name)]:
         p = os.path.join(folder, name)
         if os.path.exists(p): return p
     return None
@@ -63,71 +59,46 @@ WHITE  = (255, 255, 255)
 DARK   = ( 15,  40,  80)
 YELLOW = (255, 210,  50)
 
-# Gradient palette (top → bottom for each mood)
-_G_TOP_BLUE   = (  8,  25,  75)
-_G_BOT_BLUE   = ( 40, 120, 210)
-_G_TOP_ORANGE = ( 75,  30,  10)
-_G_BOT_ORANGE = (210, 110,  30)
-_G_TOP_RED    = ( 90,   8,   8)
-_G_BOT_RED    = (210,  35,  35)
+_G_TOP_BLUE   = (  8,  25,  75);  _G_BOT_BLUE   = ( 40, 120, 210)
+_G_TOP_ORANGE = ( 75,  30,  10);  _G_BOT_ORANGE = (210, 110,  30)
+_G_TOP_RED    = ( 90,   8,   8);  _G_BOT_RED    = (210,  35,  35)
 
 # ── CORE HELPERS ───────────────────────────────────────────────────────────────
 def fnt(path, size):
-    """Load a TrueType font, falling back to PIL default if unavailable."""
     if path and os.path.exists(path):
         try: return ImageFont.truetype(path, max(1, size))
         except: pass
     return ImageFont.load_default()
 
-def lerp(a, b, t):
-    """Linear interpolation."""
-    return a + (b - a) * t
-
-def clamp(v, lo=0.0, hi=1.0):
-    return max(lo, min(hi, v))
-
-def ease_out(t):
-    """Cubic ease-out."""
-    t = clamp(t)
-    return 1 - (1 - t) ** 3
-
-def ease_in_out(t):
-    """Smooth step."""
-    t = clamp(t)
-    return t * t * (3 - 2 * t)
+def lerp(a, b, t):      return a + (b - a) * t
+def clamp(v, lo=0.0, hi=1.0): return max(lo, min(hi, v))
+def ease_out(t):        t = clamp(t); return 1 - (1 - t) ** 3
+def ease_in_out(t):     t = clamp(t); return t * t * (3 - 2 * t)
 
 def lerp_color(c1, c2, t):
-    """Interpolate between two RGB tuples."""
     t = clamp(t)
     return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
 
 def pil2cv(img):
-    """Convert PIL RGB image → OpenCV BGR numpy array."""
     return cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 def tsz(draw, text, font):
-    """Return (width, height) of rendered text."""
     bb = draw.textbbox((0, 0), text, font=font)
     return bb[2] - bb[0], bb[3] - bb[1]
 
 def composite(base_rgb, overlay_rgba):
-    """Alpha-composite an RGBA overlay onto an RGB image. Returns RGB."""
     b = base_rgb.convert("RGBA")
     b.alpha_composite(overlay_rgba)
     return b.convert("RGB")
 
-# ── STROKE TEXT HELPER ─────────────────────────────────────────────────────────
-def draw_text_stroked(draw, pos, text, font, fill, stroke_fill=WHITE,
-                      stroke_width=3):
+def draw_text_stroked(draw, pos, text, font, fill, stroke_fill=WHITE, stroke_width=3):
     x, y = pos
     for dx in range(-stroke_width, stroke_width + 1):
         for dy in range(-stroke_width, stroke_width + 1):
-            if dx == 0 and dy == 0:
-                continue
+            if dx == 0 and dy == 0: continue
             if abs(dx) == stroke_width or abs(dy) == stroke_width:
                 draw.text((x + dx, y + dy), text, font=font, fill=stroke_fill)
     draw.text((x, y), text, font=font, fill=fill)
-
 
 def draw_wrapped_stroked(draw, text, x, y, font, fill, stroke_fill,
                          stroke_width, max_w, gap=18):
@@ -137,8 +108,7 @@ def draw_wrapped_stroked(draw, text, x, y, font, fill, stroke_fill,
         test = " ".join(cur + [w])
         tw, _ = tsz(draw, test, font)
         if tw > max_w and cur:
-            lines.append(" ".join(cur))
-            cur = [w]
+            lines.append(" ".join(cur)); cur = [w]
         else:
             cur.append(w)
     if cur: lines.append(" ".join(cur))
@@ -149,7 +119,6 @@ def draw_wrapped_stroked(draw, text, x, y, font, fill, stroke_fill,
         y += lh + gap
     return y
 
-
 def draw_wrapped_on(draw, text, x, y, font, color_rgba, max_w, gap=18):
     words  = text.split()
     lines, cur = [], []
@@ -157,8 +126,7 @@ def draw_wrapped_on(draw, text, x, y, font, color_rgba, max_w, gap=18):
         test = " ".join(cur + [w])
         tw, _ = tsz(draw, test, font)
         if tw > max_w and cur:
-            lines.append(" ".join(cur))
-            cur = [w]
+            lines.append(" ".join(cur)); cur = [w]
         else:
             cur.append(w)
     if cur: lines.append(" ".join(cur))
@@ -201,8 +169,8 @@ def make_screen1_frame(f, total_frames):
     sh = int(overlay.height * sw / overlay.width)
     overlay = overlay.resize((sw, sh), Image.LANCZOS)
 
-    x = (W  - sw) // 2
-    y = (H  - sh) // 2 - 60
+    x = (W - sw) // 2
+    y = (H - sh) // 2 - 60
 
     img = img.convert("RGBA")
     img.paste(overlay, (x, y), overlay)
@@ -270,12 +238,9 @@ def make_screen2_frame(word, pos, defn, f, total_frames):
         ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od  = ImageDraw.Draw(ov)
         draw_text_stroked(
-            od,
-            (LEFT, y_lbl + int(SLIDE * (1 - pe))),
+            od, (LEFT, y_lbl + int(SLIDE * (1 - pe))),
             "Today's word:", f1,
-            fill=DARK + (alf,),
-            stroke_fill=WHITE + (alf,),
-            stroke_width=2,
+            fill=DARK + (alf,), stroke_fill=WHITE + (alf,), stroke_width=2,
         )
         img.alpha_composite(ov)
 
@@ -306,12 +271,9 @@ def make_screen2_frame(word, pos, defn, f, total_frames):
         ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od  = ImageDraw.Draw(ov)
         draw_text_stroked(
-            od,
-            (LEFT, y_pos1 + sl),
+            od, (LEFT, y_pos1 + sl),
             "Part of speech:", f3,
-            fill=DARK + (alf,),
-            stroke_fill=WHITE + (alf,),
-            stroke_width=2,
+            fill=DARK + (alf,), stroke_fill=WHITE + (alf,), stroke_width=2,
         )
         od.text((LEFT, y_pos2 + sl), pos.capitalize(),
                 font=f3, fill=WHITE + (alf,))
@@ -324,12 +286,9 @@ def make_screen2_frame(word, pos, defn, f, total_frames):
         ov  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od  = ImageDraw.Draw(ov)
         draw_text_stroked(
-            od,
-            (LEFT, y_def1 + sl),
+            od, (LEFT, y_def1 + sl),
             "Definition:", f4,
-            fill=DARK + (alf,),
-            stroke_fill=WHITE + (alf,),
-            stroke_width=2,
+            fill=DARK + (alf,), stroke_fill=WHITE + (alf,), stroke_width=2,
         )
         if defn:
             draw_wrapped_on(od, defn, LEFT, y_def2 + sl, f5,
@@ -385,7 +344,7 @@ def make_screen3_frame(n, f_in_sec, fps):
     return img
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SCREEN 4 — FULL UPGRADED TIMER  (60 s)
+#  SCREEN 4 — FULL TIMER  (60 s)
 # ══════════════════════════════════════════════════════════════════════════════
 def make_screen4_frame(word, secs_left):
     secs_left = max(0.0, secs_left)
@@ -420,8 +379,7 @@ def make_screen4_frame(word, secs_left):
     r = int(318 * (1.0 + pulse_amp * math.sin(elapsed * math.pi * pulse_speed)))
 
     if secs_left > 30:
-        c_bg  = ( 80, 148, 210)
-        c_bdr = ( 28,  88, 152)
+        c_bg  = ( 80, 148, 210);  c_bdr = ( 28,  88, 152)
         arc_rgba = (255, 255, 255, 215)
     elif secs_left > 10:
         tt    = (30 - secs_left) / 20.0
@@ -452,7 +410,6 @@ def make_screen4_frame(word, secs_left):
     num_col = WHITE if secs_left <= 10 else DARK
     num_x   = cx_c - nw // 2
     num_y   = cy_c - nh // 2 - 65
-
     draw.text((num_x, num_y), num, font=f_num, fill=num_col)
 
     if 28.8 <= secs_left <= 31.2:
@@ -485,16 +442,14 @@ def make_screen4_frame(word, secs_left):
     by,  bh  = H - 155, 20
     br       = 10
     try:
-        draw.rounded_rectangle([bx1, by, bx2, by + bh],
-                                radius=br, fill=(38, 42, 72))
+        draw.rounded_rectangle([bx1, by, bx2, by + bh], radius=br, fill=(38, 42, 72))
     except AttributeError:
         draw.rectangle([bx1, by, bx2, by + bh], fill=(38, 42, 72))
     fill_w = int((bx2 - bx1) * secs_left / 60.0)
     if fill_w > br * 2:
         fc = lerp_color((95, 190, 255), (255, 65, 65), 1.0 - secs_left / 60.0)
         try:
-            draw.rounded_rectangle([bx1, by, bx1 + fill_w, by + bh],
-                                    radius=br, fill=fc)
+            draw.rounded_rectangle([bx1, by, bx1 + fill_w, by + bh], radius=br, fill=fc)
         except AttributeError:
             draw.rectangle([bx1, by, bx1 + fill_w, by + bh], fill=fc)
 
@@ -515,8 +470,7 @@ def make_screen4_frame(word, secs_left):
         yy    = (H - th) // 2
         for line in lines:
             lw2, lh2 = tsz(od, line, f_end)
-            od.text(((W - lw2) // 2, yy), line, font=f_end,
-                    fill=WHITE + (alf,))
+            od.text(((W - lw2) // 2, yy), line, font=f_end, fill=WHITE + (alf,))
             yy += lh2 + 24
         img = composite(img, ov)
 
@@ -565,53 +519,89 @@ def build_audio():
 # ══════════════════════════════════════════════════════════════════════════════
 #  WORD FETCH
 # ══════════════════════════════════════════════════════════════════════════════
+WORD_BANK = [
+    "resilient", "eloquent", "tenacious", "audacious", "empathy",
+    "deliberate", "persevere", "integrity", "articulate", "candid",
+    "composed", "confident", "courageous", "decisive", "diligent",
+    "dynamic", "enthusiastic", "flexible", "genuine", "gracious",
+    "humble", "innovative", "intuitive", "meticulous", "motivated",
+    "optimistic", "passionate", "patient", "perceptive", "persistent",
+    "proactive", "receptive", "resourceful", "sincere", "strategic",
+    "thoughtful", "transparent", "versatile", "adaptable", "assertive",
+    "authentic", "compassionate", "cultivate", "dedicate", "flourish",
+    "foster", "influence", "inspire", "navigate", "nurture",
+    "overcome", "prioritize", "pursue", "reflect", "strive",
+    "accomplish", "ambitious", "appreciate", "aspire", "clarity",
+    "conscientious", "consistent", "creative", "curious", "dependable",
+    "determined", "diplomatic", "discerning", "effective", "ethical",
+    "expressive", "forthright", "industrious", "insightful", "judicious",
+    "magnanimous", "mindful", "objective", "pragmatic", "principled",
+    "proficient", "purposeful", "reliable", "remarkable", "resolute",
+    "steadfast", "stoic", "tactful", "trustworthy", "unwavering",
+    "vigilant", "visionary", "poised", "shrewd", "tenacity",
+    "serendipity", "luminous", "invigorate", "embolden", "perseverance",
+    "equanimity", "sagacious", "forthcoming", "inquisitive", "empathetic",
+]
+
 FALLBACKS = [
     ("resilient",   "adjective", "Able to recover quickly from difficult conditions."),
     ("eloquent",    "adjective", "Fluent or persuasive in speaking or writing."),
-    ("serendipity", "noun",      "The occurrence of events by chance in a happy or beneficial way."),
     ("tenacious",   "adjective", "Tending to keep a firm hold of something; persistent."),
-    ("integrity",   "noun",      "The quality of being honest and having strong moral principles."),
     ("audacious",   "adjective", "Showing a willingness to take surprisingly bold risks."),
     ("empathy",     "noun",      "The ability to understand and share the feelings of another."),
     ("deliberate",  "adjective", "Done consciously and intentionally; careful and unhurried."),
-    ("luminous",    "adjective", "Bright and emitting or reflecting light strongly."),
-    ("persevere",   "verb",      "Continue in a course of action despite difficulty."),
+    ("persevere",   "verb",      "Continue in a course of action in spite of difficulty."),
+    ("integrity",   "noun",      "The quality of being honest and having strong moral principles."),
+    ("articulate",  "adjective", "Having or showing the ability to speak fluently and coherently."),
+    ("meticulous",  "adjective", "Showing great attention to detail; very careful and precise."),
+    ("assertive",   "adjective", "Having or showing a confident and forceful personality."),
+    ("candid",      "adjective", "Truthful and straightforward; frank in what one says or writes."),
+    ("pragmatic",   "adjective", "Dealing with things sensibly and realistically in a practical way."),
 ]
 
+def _good_defn(defn: str) -> bool:
+    d = defn.strip()
+    return (
+        len(d) >= 55
+        and d.count(" ") >= 7
+        and not d.endswith((":", ",", "(", "that is,", "i.e."))
+        and not any(skip in d.lower() for skip in
+                    ["symbol", "abbrev", "abbreviation", "see also",
+                     "plural of", "past tense of", "variant of",
+                     "short for", "archaic", "dated term"])
+    )
+
 def get_word():
-    try:
-        from wonderwords import RandomWord
-        import requests
-        rw = RandomWord()
-        for _ in range(15):
-            w = rw.word()
-            try:
-                r = requests.get(
-                    f"https://api.dictionaryapi.dev/api/v2/entries/en/{w}",
-                    timeout=5)
-                if r.status_code == 200:
-                    m    = r.json()[0]["meanings"]
-                    pos  = m[0]["partOfSpeech"]
-                    defn = m[0]["definitions"][0]["definition"]
-                    if defn and len(defn) > 10:
-                        return w, pos, defn
-            except Exception:
+    import requests as _req
+
+    candidates = WORD_BANK.copy()
+    random.shuffle(candidates)
+
+    preferred_pos = ["adjective", "verb", "adverb", "noun"]
+
+    for w in candidates:
+        try:
+            r = _req.get(
+                f"https://api.dictionaryapi.dev/api/v2/entries/en/{w}",
+                timeout=5)
+            if r.status_code != 200:
                 continue
-    except Exception:
-        pass
+            meanings = r.json()[0]["meanings"]
+            for pref in preferred_pos:
+                for m in meanings:
+                    if m["partOfSpeech"] == pref:
+                        d = m["definitions"][0]["definition"]
+                        if _good_defn(d):
+                            return w, pref, d
+        except Exception:
+            continue
+
     return random.choice(FALLBACKS)
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  BGM PICKER  — random from "audios/" folder, fallback to bgm.mp3
+#  BGM PICKER
 # ══════════════════════════════════════════════════════════════════════════════
 def pick_bgm():
-    """
-    Returns (path_or_None, display_name).
-    Priority:
-      1. Random file from  <script_dir>/audios/  (mp3/wav/aac/m4a)
-      2. bgm.mp3 / bgm.wav sitting next to the script
-      3. None  →  no background music
-    """
     audios_dir = os.path.join(SCRIPT_DIR, "audios")
     if os.path.isdir(audios_dir):
         candidates = [
@@ -642,30 +632,27 @@ def main():
         tg_ok = False
         print("⚠️  telegram_notifier.py not found — Telegram notifications disabled.")
 
-    print("🎬  Word Challenge Reel Generator  [v2 — UPGRADED]")
+    print("🎬  Word Challenge Reel Generator  [v3 — FINAL]")
     print("─" * 52)
 
     if tg_ok:
         tg.notify_start()
 
-    for label, path in [("Screen 1 image", IMG_SCREEN1),
-                        ("Screen 3 image", IMG_SCREEN3)]:
+    for label, path in [("Screen 1 image", IMG_SCREEN1), ("Screen 3 image", IMG_SCREEN3)]:
         ok = os.path.exists(path)
         print(f"  {'✅' if ok else '⚠️  NOT FOUND'}  {label}: {os.path.basename(path)}")
 
-    # ── Pick background music ─────────────────────────────────────────────────
     bgm_path, bgm_display = pick_bgm()
     if bgm_path:
-        print(f"  🎵  Background music selected: {bgm_display}")
+        print(f"  🎵  Background music: {bgm_display}")
     else:
-        print("  🔇  No audio found — add files to an 'audios/' folder for background music")
+        print("  🔇  No audio found — add files to 'audios/' for background music")
 
     print("\n📖  Fetching word…")
     try:
         word, pos, defn = get_word()
     except Exception as e:
-        if tg_ok:
-            tg.notify_error("Word fetch", str(e))
+        if tg_ok: tg.notify_error("Word fetch", str(e))
         raise
 
     print(f"    Word      : {word}")
@@ -675,6 +662,30 @@ def main():
 
     if tg_ok:
         tg.notify_word(word, pos, defn)
+
+    print("✨  Generating caption…")
+    caption = None
+    try:
+        from instagram_uploader import build_caption
+        caption = build_caption(word, pos, defn)
+        W_BOX = 64
+        SEP   = "─" * (W_BOX + 4)
+        print()
+        print(SEP)
+        print(f"  📝  CAPTION  ({len(caption.splitlines())} lines, {len(caption)} chars)")
+        print(SEP)
+        for raw_line in caption.splitlines():
+            if not raw_line: print(); continue
+            while len(raw_line) > W_BOX:
+                print("  " + raw_line[:W_BOX])
+                raw_line = raw_line[W_BOX:]
+            print("  " + raw_line)
+        print(SEP)
+        print()
+    except ImportError:
+        print("⚠️  instagram_uploader.py not found — caption skipped.\n")
+    except Exception as e:
+        print(f"⚠️  Caption generation failed: {e}\n")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))
@@ -697,7 +708,7 @@ def main():
             writer.write(pil2cv(make_screen3_frame(n, f, FPS)))
     print("✓")
 
-    print("▶  Screen 4/4  Upgraded timer   (60 s) …")
+    print("▶  Screen 4/4  Timer            (60 s) …")
     s4_tot = 60 * FPS
     for f in range(s4_tot):
         secs = 60.0 - f / FPS
@@ -717,9 +728,7 @@ def main():
     if bgm_path:
         cmd = [
             "ffmpeg", "-y",
-            "-i", TMP_VIDEO,
-            "-i", TMP_AUDIO,
-            "-i", bgm_path,
+            "-i", TMP_VIDEO, "-i", TMP_AUDIO, "-i", bgm_path,
             "-filter_complex",
             "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.3[aout]",
             "-map", "0:v", "-map", "[aout]",
@@ -749,50 +758,31 @@ def main():
 
     if tg_ok:
         tg.notify_render_done(OUTPUT)
-        tg.send_video(
-            OUTPUT,
-            caption=f"🎬 Preview: Today's reel — word is <b>{word.upper()}</b>",
-        )
+        tg.send_video(OUTPUT, caption=f"🎬 Preview: word is <b>{word.upper()}</b>")
 
     if skip_upload:
         print("\n⏭   Skipping Instagram upload (--no-upload flag).")
-        if tg_ok:
-            tg.notify_skipped("--no-upload flag was passed.")
+        if tg_ok: tg.notify_skipped("--no-upload flag was passed.")
     else:
         print("\n" + "─" * 45)
         print("📱  Uploading to Instagram…")
         print("─" * 45)
-        if tg_ok:
-            tg.notify_upload_start()
+        if tg_ok: tg.notify_upload_start()
         try:
             from instagram_uploader import upload_reel
             post_id = upload_reel(
-                video_path=OUTPUT, word=word, pos=pos, defn=defn)
-            print(f"\n🎉  Reel is LIVE on Instagram!  (Post ID: {post_id})")
-            print("    Open the Instagram app to see it on your profile.")
-            if tg_ok:
-                tg.notify_live(post_id, word)
+                video_path=OUTPUT, word=word, pos=pos, defn=defn,
+                prebuilt_caption=caption)
+            print(f"\n🎉  Reel is LIVE!  (Post ID: {post_id})")
+            if tg_ok: tg.notify_live(post_id, word)
         except ImportError:
             msg = "instagram_uploader.py not found — skipping upload."
             print(f"⚠️  {msg}")
-            if tg_ok:
-                tg.notify_skipped(msg)
-        except ValueError as e:
-            if "not set" in str(e):
-                msg = f"Credentials not configured:\n{e}"
-                print(f"⚠️  Upload skipped — {msg}")
-                if tg_ok:
-                    tg.notify_skipped(msg)
-            else:
-                print(f"❌  Upload error:\n    {e}")
-                print("    Video saved locally as:", OUTPUT)
-                if tg_ok:
-                    tg.notify_error("Instagram upload", str(e))
+            if tg_ok: tg.notify_skipped(msg)
         except Exception as e:
             print(f"❌  Upload failed:\n    {e}")
-            print("    The video is still saved locally as:", OUTPUT)
-            if tg_ok:
-                tg.notify_error("Instagram upload", str(e))
+            print(f"    Video saved locally as: {OUTPUT}")
+            if tg_ok: tg.notify_error("Instagram upload", str(e))
 
     print("\n📱  Done!")
 

@@ -1,15 +1,17 @@
 name: Post Daily Word Reel
 
 on:
+  # Three posts per day at Instagram's peak engagement windows (UTC):
+  #   08:00 UTC → 1:30 PM IST / 9:00 AM CET  — morning commute
+  #   12:00 UTC → 5:30 PM IST / 2:00 PM CET  — lunch break
+  #   17:00 UTC → 10:30 PM IST / 7:00 PM CET — evening wind-down
+  #
+  # Posting more than 3-4 Reels per day from an automated account
+  # risks triggering Instagram's spam detection and suppressing reach.
   schedule:
-    - cron: "0 4 * * *"
-    - cron: "0 6 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 10 * * *"
+    - cron: "0 8  * * *"
     - cron: "0 12 * * *"
-    - cron: "0 14 * * *"
-    - cron: "0 16 * * *"
-    - cron: "0 18 * * *"
+    - cron: "0 17 * * *"
   workflow_dispatch:
 
 jobs:
@@ -25,29 +27,27 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install opencv-python-headless pillow numpy requests wonderwords
+      - name: Install Python dependencies
+        run: pip install opencv-python-headless pillow numpy requests
 
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg
+        run: sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Install Poppins fonts
         run: |
           mkdir -p /usr/share/fonts/truetype/google-fonts
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Bold.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Medium.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Regular.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf
-          wget -q https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Light.ttf \
-               -O /usr/share/fonts/truetype/google-fonts/Poppins-Light.ttf
+          BASE="https://github.com/google/fonts/raw/main/ofl/poppins"
+          for weight in Bold Medium Regular Light; do
+            wget -q "${BASE}/Poppins-${weight}.ttf" \
+                 -O "/usr/share/fonts/truetype/google-fonts/Poppins-${weight}.ttf"
+          done
           fc-cache -fv
 
       - name: Generate and post reel
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python generate_reel.py
