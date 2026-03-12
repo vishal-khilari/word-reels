@@ -606,15 +606,17 @@ def get_word():
 #  BGM PICKER
 # ══════════════════════════════════════════════════════════════════════════════
 def pick_bgm():
-    audios_dir = os.path.join(SCRIPT_DIR, "audios")
-    if os.path.isdir(audios_dir):
-        candidates = [
-            f for f in os.listdir(audios_dir)
-            if f.lower().endswith((".mp3", ".wav", ".aac", ".m4a"))
-        ]
-        if candidates:
-            chosen = random.choice(candidates)
-            return os.path.join(audios_dir, chosen), f"audios/{chosen}"
+    # Try both "Audios" (capital) and "audios" (lowercase) for cross-platform compat
+    for folder_name in ("Audios", "audios", "AUDIOS"):
+        audios_dir = os.path.join(SCRIPT_DIR, folder_name)
+        if os.path.isdir(audios_dir):
+            candidates = [
+                f for f in os.listdir(audios_dir)
+                if f.lower().endswith((".mp3", ".wav", ".aac", ".m4a"))
+            ]
+            if candidates:
+                chosen = random.choice(candidates)
+                return os.path.join(audios_dir, chosen), f"{folder_name}/{chosen}"
 
     for name in ("bgm.mp3", "bgm.wav", "BGM.mp3", "BGM.wav"):
         path = os.path.join(SCRIPT_DIR, name)
@@ -731,27 +733,39 @@ def main():
     print("🎞   Merging video + audio…", end=" ", flush=True)
 
     # Instagram Reels audio requirements:
-    #   - AAC codec, stereo (2 channels), 44100 Hz, ≥128k bitrate
-    #   - H.264 video with yuv420p pixel format (broadest device compatibility)
-    #   - movflags +faststart  → moov atom at front of file (required for streaming upload)
+    #   - AAC-LC codec, stereo, 44100 Hz, CBR 128k minimum
+    #   - H.264 / yuv420p video
+    #   - movflags +faststart (moov atom at front — required for API upload)
+    #
+    # IMPORTANT: Instagram silently drops audio tracks with bitrate < 128k.
+    # Our beep WAV is mostly silence so AAC VBR compresses it to ~15 kbps
+    # and Instagram drops it. Fix: mix a silent pad track so the encoder
+    # always has a full-bandwidth signal, then force CBR 128k floor.
     _VIDEO_FLAGS = [
         "-c:v", "libx264", "-preset", "fast", "-crf", "22",
         "-pix_fmt", "yuv420p",
     ]
     _AUDIO_FLAGS = [
-        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+        "-c:a", "aac", "-profile:a", "aac_low",
+        "-b:a", "128k", "-ar", "44100", "-ac", "2",
     ]
     _CONTAINER_FLAGS = [
         "-movflags", "+faststart",
         "-shortest",
     ]
 
+    # Silent pad — ensures AAC encoder always hits 128k CBR floor
+    _SILENT = ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+
     if bgm_path:
         cmd = [
             "ffmpeg", "-y",
-            "-i", TMP_VIDEO, "-i", TMP_AUDIO, "-i", bgm_path,
+            "-i", TMP_VIDEO,
+            "-i", TMP_AUDIO,
+            "-i", bgm_path,
+            *_SILENT,
             "-filter_complex",
-            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.3,"
+            "[1:a][2:a][3:a]amix=inputs=3:duration=first:weights=1 0.3 0.05,"
             "aresample=44100,aformat=channel_layouts=stereo[aout]",
             "-map", "0:v", "-map", "[aout]",
             *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
@@ -760,8 +774,13 @@ def main():
     else:
         cmd = [
             "ffmpeg", "-y",
-            "-i", TMP_VIDEO, "-i", TMP_AUDIO,
-            "-map", "0:v", "-map", "1:a",
+            "-i", TMP_VIDEO,
+            "-i", TMP_AUDIO,
+            *_SILENT,
+            "-filter_complex",
+            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.05,"
+            "aresample=44100,aformat=channel_layouts=stereo[aout]",
+            "-map", "0:v", "-map", "[aout]",
             *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
             OUTPUT,
         ]
