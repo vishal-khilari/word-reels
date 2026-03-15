@@ -658,6 +658,7 @@ def main():
         tg_ok = True
     except ImportError:
         tg_ok = False
+        print("⚠️  telegram_notifier.py not found — Telegram notifications disabled.")  # ← restored from v3
 
     print("🎬  Word Challenge Reel Generator  [v5 — GAMIFIED + UPDATED]")
     print("─" * 56)
@@ -668,7 +669,11 @@ def main():
     print(f"  🎵  BGM: {bgm_display if bgm_path else 'None'}")
 
     print("\n📖  Fetching word from Random Word API…")
-    word, pos, defn = get_word()
+    try:                                          # ← restored try/except from v3
+        word, pos, defn = get_word()
+    except Exception as e:
+        if tg_ok: tg.notify_error("Word fetch", str(e))
+        raise
     print(f"    Word: {word.upper()}\n")
 
     if tg_ok: tg.notify_word(word, pos, defn)
@@ -713,7 +718,6 @@ def main():
     _S = ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
 
     if bgm_path:
-        # BGM boosted 500% (5x), plays once and stops if shorter than 74s
         cmd = ["ffmpeg", "-y",
                "-i", TMP_VIDEO,
                "-i", TMP_AUDIO,
@@ -731,11 +735,34 @@ def main():
     subprocess.run(cmd, capture_output=True)
     print(f"\n✅  Saved → {OUTPUT}")
 
-    if not skip_upload:
+    if tg_ok: tg.notify_render_done(OUTPUT)                                      # ← restored from v3
+    if tg_ok: tg.send_video(OUTPUT, caption=f"🎬 Preview: word is <b>{word.upper()}</b>")  # ← restored from v3
+
+    if skip_upload:
+        msg = "--no-upload flag was passed."                                      # ← restored from v3
+        print(f"\n⏭   Skipping Instagram upload ({msg})")
+        if tg_ok: tg.notify_skipped(msg)
+    else:
+        print("\n" + "─" * 45)
+        print("📱  Uploading to Instagram…")
+        print("─" * 45)
+        if tg_ok: tg.notify_upload_start()                                       # ← restored from v3
         try:
             from instagram_uploader import upload_reel
-            upload_reel(video_path=OUTPUT, word=word, pos=pos, defn=defn, prebuilt_caption=caption)
-        except: pass
+            post_id = upload_reel(video_path=OUTPUT, word=word, pos=pos, defn=defn, prebuilt_caption=caption)
+            print(f"\n🎉  Reel is LIVE!  (Post ID: {post_id})")
+            if tg_ok: tg.notify_live(post_id, word)                              # ← restored from v3
+        except ImportError:
+            msg = "instagram_uploader.py not found — skipping upload."           # ← restored from v3
+            print(f"⚠️  {msg}")
+            if tg_ok: tg.notify_skipped(msg)
+        except Exception as e:
+            print(f"❌  Upload failed:\n    {e}")
+            print(f"    Video saved locally as: {OUTPUT}")
+            if tg_ok: tg.notify_error("Instagram upload", str(e))               # ← restored from v3
+
+    print("\n📱  Done!")
+
 
 if __name__ == "__main__":
     main()
