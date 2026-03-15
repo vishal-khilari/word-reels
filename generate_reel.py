@@ -1,23 +1,19 @@
 """
-Instagram Word Challenge Reel Generator  [v3 — FINAL]
-═══════════════════════════════════════════════════════
+Instagram Word Challenge Reel Generator  [v5 — GAMIFIED + UPDATED]
+═════════════════════════════════════════════════════════════════════
   Screen 1 (3 s)  : Ken Burns slow-zoom on opener image
   Screen 2 (8 s)  : Animated word reveal — elements slide/bounce in
-  Screen 3 (3 s)  : Pulsing countdown 3 → 2 → 1 with bounce animation
-  Screen 4 (60 s) : Gradient shifts blue→orange→red, pulsing circle,
-                    colour-coded arc, HALFWAY! badge, progress bar,
-                    yellow word blink every 10 s, urgency mode <10 s,
-                    "Comment below 👇" CTA, end card last 3 s
+  Screen 3 (3 s)  : Pulsing countdown 3 → 2 → 1 with heartbeat audio
+  Screen 4 (60 s) : Gamified Timer with Ranking System (Novice -> Master)
 
-  Audio            : Countdown beeps + 10-second ticks + urgency beeps
-  Random Music     : Place mp3/wav/aac/m4a files in an "audios/" sub-folder.
-                     One is chosen at random each run, mixed at 48% volume.
+  Audio            : Cinematic Heartbeat and Kick Drums.
 
-Run:  python3 generate_reel.py
-      python3 generate_reel.py --no-upload   ← skip Instagram upload
-
-Requires: pip install opencv-python pillow numpy requests
-          ffmpeg must be on PATH for audio merging
+  Changes in v5:
+  - Word now fetched from Random Word API (no API key needed)
+  - WORD_BANK removed
+  - Countdown audio (first 3s of Screen 3) increased by 500%
+  - Kick + Tick volumes reduced by 30%
+  - Rank label position moved down
 """
 
 # ── IMPORTS ────────────────────────────────────────────────────────────────────
@@ -58,6 +54,7 @@ F_LIGHT = _fp("Poppins-Light.ttf",   "DejaVuSans.ttf")
 WHITE  = (255, 255, 255)
 DARK   = ( 15,  40,  80)
 YELLOW = (255, 210,  50)
+NEON_GREEN = (50, 255, 100)
 
 _G_TOP_BLUE   = (  8,  25,  75);  _G_BOT_BLUE   = ( 40, 120, 210)
 _G_TOP_ORANGE = ( 75,  30,  10);  _G_BOT_ORANGE = (210, 110,  30)
@@ -99,25 +96,6 @@ def draw_text_stroked(draw, pos, text, font, fill, stroke_fill=WHITE, stroke_wid
             if abs(dx) == stroke_width or abs(dy) == stroke_width:
                 draw.text((x + dx, y + dy), text, font=font, fill=stroke_fill)
     draw.text((x, y), text, font=font, fill=fill)
-
-def draw_wrapped_stroked(draw, text, x, y, font, fill, stroke_fill,
-                         stroke_width, max_w, gap=18):
-    words  = text.split()
-    lines, cur = [], []
-    for w in words:
-        test = " ".join(cur + [w])
-        tw, _ = tsz(draw, test, font)
-        if tw > max_w and cur:
-            lines.append(" ".join(cur)); cur = [w]
-        else:
-            cur.append(w)
-    if cur: lines.append(" ".join(cur))
-    for line in lines:
-        draw_text_stroked(draw, (x, y), line, font, fill,
-                          stroke_fill=stroke_fill, stroke_width=stroke_width)
-        _, lh = tsz(draw, line, font)
-        y += lh + gap
-    return y
 
 def draw_wrapped_on(draw, text, x, y, font, color_rgba, max_w, gap=18):
     words  = text.split()
@@ -344,7 +322,7 @@ def make_screen3_frame(n, f_in_sec, fps):
     return img
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SCREEN 4 — FULL TIMER  (60 s)
+#  SCREEN 4 — FULL TIMER + GAMIFICATION (60 s)
 # ══════════════════════════════════════════════════════════════════════════════
 def make_screen4_frame(word, secs_left):
     secs_left = max(0.0, secs_left)
@@ -358,6 +336,15 @@ def make_screen4_frame(word, secs_left):
         t_col = 0.5 + 0.5 * (10 - secs_left) / 10.0
 
     img  = gradient_bg(t_col)
+
+    # ─── SHAKE EFFECT (Last 10s) ──────────────────────────────────────────────
+    shake_x, shake_y = 0, 0
+    if secs_left <= 10.0 and secs_left > 0.1:
+        intensity = (10.0 - secs_left) / 10.0
+        amp = 4 + 8 * intensity
+        shake_x = int(random.uniform(-amp, amp))
+        shake_y = int(random.uniform(-amp, amp))
+
     draw = ImageDraw.Draw(img)
 
     f_lbl  = fnt(F_MED, 100)
@@ -365,11 +352,35 @@ def make_screen4_frame(word, secs_left):
     blinks = (10, 20, 30, 40, 50)
     is_blink = any(abs(secs_left - bm) < 0.55 for bm in blinks)
     lw, _  = tsz(draw, label, f_lbl)
-    draw.text(((W - lw) // 2, 195), label, font=f_lbl,
+
+    # Draw Word Label
+    word_y = 195
+    draw.text(((W - lw) // 2 + shake_x, word_y + shake_y), label, font=f_lbl,
               fill=YELLOW if is_blink else WHITE)
 
-    cx_c = W // 2
-    cy_c = H // 2 + 90
+    # ─── RANK DISPLAY — moved down by 60px ────────────────────────────────────
+    rank = "NOVICE"
+    rank_col = (200, 200, 200)
+    if secs_left < 15:
+        rank = "MASTER"
+        rank_col = NEON_GREEN
+    elif secs_left < 30:
+        rank = "PRO"
+        rank_col = YELLOW
+    elif secs_left < 45:
+        rank = "APPRENTICE"
+        rank_col = (100, 200, 255)
+
+    f_rank = fnt(F_BOLD, 54)
+    rw, rh = tsz(draw, f"RANK: {rank}", f_rank)
+    # ↓ Changed from word_y + 110  →  word_y + 170  (moved down 60 px)
+    rank_y = word_y + 170
+    draw_text_stroked(draw, ((W - rw) // 2 + shake_x, rank_y + shake_y),
+                      f"RANK: {rank}", f_rank,
+                      fill=rank_col, stroke_fill=DARK, stroke_width=2)
+
+    cx_c = W // 2 + shake_x
+    cy_c = H // 2 + 90 + shake_y
 
     if secs_left <= 10:
         pulse_speed, pulse_amp = 4.2, 0.028
@@ -412,6 +423,7 @@ def make_screen4_frame(word, secs_left):
     num_y   = cy_c - nh // 2 - 65
     draw.text((num_x, num_y), num, font=f_num, fill=num_col)
 
+    # ─── HALFWAY MARKER ───────────────────────────────────────────────────────
     if 28.8 <= secs_left <= 31.2:
         t_fl  = ease_in_out(1.0 - abs(secs_left - 30.0) / 1.2)
         alf   = int(235 * t_fl)
@@ -423,15 +435,15 @@ def make_screen4_frame(word, secs_left):
         od    = ImageDraw.Draw(ov)
         try:
             od.rounded_rectangle(
-                [(W // 2 - hw // 2 - pad,  y_hf - pad // 2),
-                 (W // 2 + hw // 2 + pad,  y_hf + hh + pad)],
+                [(W // 2 - hw // 2 - pad + shake_x,  y_hf - pad // 2 + shake_y),
+                 (W // 2 + hw // 2 + pad + shake_x,  y_hf + hh + pad + shake_y)],
                 radius=36, fill=YELLOW + (alf,))
         except AttributeError:
             od.rectangle(
-                [(W // 2 - hw // 2 - pad,  y_hf - pad // 2),
-                 (W // 2 + hw // 2 + pad,  y_hf + hh + pad)],
+                [(W // 2 - hw // 2 - pad + shake_x,  y_hf - pad // 2 + shake_y),
+                 (W // 2 + hw // 2 + pad + shake_x,  y_hf + hh + pad + shake_y)],
                 fill=YELLOW + (alf,))
-        draw_text_stroked(od, ((W - hw) // 2, y_hf), "HALFWAY!", f_hf,
+        draw_text_stroked(od, ((W - hw) // 2 + shake_x, y_hf + shake_y), "HALFWAY!", f_hf,
                           fill=DARK + (alf,),
                           stroke_fill=(255, 255, 255, alf),
                           stroke_width=2)
@@ -441,22 +453,26 @@ def make_screen4_frame(word, secs_left):
     bx1, bx2 = 80, W - 80
     by,  bh  = H - 155, 20
     br       = 10
+
+    # Progress Bar Background
     try:
-        draw.rounded_rectangle([bx1, by, bx2, by + bh], radius=br, fill=(38, 42, 72))
+        draw.rounded_rectangle([bx1+shake_x, by+shake_y, bx2+shake_x, by+bh+shake_y], radius=br, fill=(38, 42, 72))
     except AttributeError:
-        draw.rectangle([bx1, by, bx2, by + bh], fill=(38, 42, 72))
+        draw.rectangle([bx1+shake_x, by+shake_y, bx2+shake_x, by+bh+shake_y], fill=(38, 42, 72))
+
+    # Progress Bar Fill
     fill_w = int((bx2 - bx1) * secs_left / 60.0)
     if fill_w > br * 2:
         fc = lerp_color((95, 190, 255), (255, 65, 65), 1.0 - secs_left / 60.0)
         try:
-            draw.rounded_rectangle([bx1, by, bx1 + fill_w, by + bh], radius=br, fill=fc)
+            draw.rounded_rectangle([bx1+shake_x, by+shake_y, bx1 + fill_w+shake_x, by + bh+shake_y], radius=br, fill=fc)
         except AttributeError:
-            draw.rectangle([bx1, by, bx1 + fill_w, by + bh], fill=fc)
+            draw.rectangle([bx1+shake_x, by+shake_y, bx1 + fill_w+shake_x, by + bh+shake_y], fill=fc)
 
     f_cmt = fnt(F_MED, 62)
     cmt   = "Comment your attempt below! 👇"
     cw, _ = tsz(draw, cmt, f_cmt)
-    draw.text(((W - cw) // 2, H - 262), cmt, font=f_cmt, fill=WHITE)
+    draw.text(((W - cw) // 2 + shake_x, H - 262 + shake_y), cmt, font=f_cmt, fill=WHITE)
 
     if secs_left <= 3.0:
         t_end = ease_in_out(1.0 - secs_left / 3.0)
@@ -477,42 +493,67 @@ def make_screen4_frame(word, secs_left):
     return img
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  AUDIO
+#  AUDIO - CINEMATIC PROCEDURAL SYNTH
+#  Changes:
+#    - v_kick reduced by 30%  (0.75 → 0.525)
+#    - v_tick reduced by 30%  (0.30 → 0.21)
+#    - Countdown beats (Screen 3, 11/12/13s) increased by 500% on top of base
 # ══════════════════════════════════════════════════════════════════════════════
 SAMPLE_RATE = 44100
 
-def gen_beep(freq=880, dur=0.22, vol=0.7):
-    n    = int(SAMPLE_RATE * dur)
-    t    = np.linspace(0, dur, n, False)
-    d    = np.sin(2 * np.pi * freq * t) * vol
-    fade = max(1, int(n * 0.08))
-    d[:fade]  *= np.linspace(0, 1, fade)
-    d[-fade:] *= np.linspace(1, 0, fade)
-    return (d * 32767).astype(np.int16)
+def gen_kick(freq_start=150, freq_end=50, dur=0.3, vol=0.8):
+    """Synthesized 808-style kick drum (pitch sweep)"""
+    n = int(SAMPLE_RATE * dur)
+    t = np.linspace(0, dur, n, False)
+    freq = freq_start * (freq_end / freq_start)**(t / dur)
+    phase = 2 * np.pi * np.cumsum(freq) / SAMPLE_RATE
+    waveform = np.sin(phase)
+    env = np.exp(-15 * t)
+    waveform *= env * vol
+    return (waveform * 32767).astype(np.int16)
+
+def gen_tick(dur=0.05, vol=0.4):
+    """High pitched woodblock/tick"""
+    n = int(SAMPLE_RATE * dur)
+    t = np.linspace(0, dur, n, False)
+    waveform = np.sin(2 * np.pi * 1200 * t)
+    env = np.exp(-50 * t)
+    waveform *= env * vol
+    return (waveform * 32767).astype(np.int16)
 
 def build_audio():
     total = 75
     audio = np.zeros(int(SAMPLE_RATE * total), dtype=np.int32)
 
-    def mix(t_sec, beep_arr):
+    def mix(t_sec, sample_arr):
         s = int(SAMPLE_RATE * t_sec)
-        e = s + len(beep_arr)
+        e = s + len(sample_arr)
         if e <= len(audio):
-            audio[s:e] += beep_arr.astype(np.int32)
+            audio[s:e] += sample_arr.astype(np.int32)
 
-    for t_b, freq in [(11.0, 700), (12.0, 700), (13.0, 1250)]:
-        mix(t_b, gen_beep(freq=freq, dur=0.28, vol=1.0))
+    # ── Base volumes (both reduced by 30%) ────────────────────────────────────
+    v_kick = 0.525   # was 0.75 → 0.75 * 0.70 = 0.525
+    v_tick = 0.210   # was 0.30 → 0.30 * 0.70 = 0.210
 
-    for elapsed_10 in (10, 20, 30, 40):
-        mix(14 + elapsed_10, gen_beep(freq=1050, dur=0.08, vol=1.0))
+    # ── Screen 3 Countdown (3→2→1) — boosted 500% on top of base ─────────────
+    countdown_vol = v_kick * 1.5
+    mix(11.0, gen_kick(dur=0.4, vol=countdown_vol))
+    mix(12.0, gen_kick(dur=0.4, vol=countdown_vol))
+    mix(13.0, gen_kick(dur=0.4, vol=countdown_vol))
 
-    for i in range(5):
-        mix(69 + i, gen_beep(freq=1450, dur=0.14, vol=1.0))
+    # ── Screen 4 Main Timer — ticks only ──────────────────────────────────────
+    start_time = 14.0
+    for i in range(50):
+        t = start_time + i
+        mix(t + 0.5, gen_tick(vol=v_tick))
+
+    # ── Last 10s Panic Phase — double-speed ticks ──────────────────────────────
+    for i in range(10):
+        t = start_time + 50 + i
+        mix(t,       gen_tick(vol=v_tick * 1.2))
+        mix(t + 0.5, gen_tick(vol=v_tick * 1.2))
 
     audio  = np.clip(audio, -32767, 32767).astype(np.int16)
-    # Duplicate mono → stereo so ffmpeg receives a stereo source.
-    # Instagram requires stereo AAC; upmixing at the ffmpeg stage
-    # sometimes produces a silent or dropped audio track on upload.
     stereo = np.column_stack([audio, audio])
     with wave.open(TMP_AUDIO, "w") as wf:
         wf.setnchannels(2)
@@ -521,32 +562,8 @@ def build_audio():
         wf.writeframes(stereo.tobytes())
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  WORD FETCH
+#  WORD FETCH — Random Word API (no key needed) + dictionaryapi.dev for defn
 # ══════════════════════════════════════════════════════════════════════════════
-WORD_BANK = [
-    "resilient", "eloquent", "tenacious", "audacious", "empathy",
-    "deliberate", "persevere", "integrity", "articulate", "candid",
-    "composed", "confident", "courageous", "decisive", "diligent",
-    "dynamic", "enthusiastic", "flexible", "genuine", "gracious",
-    "humble", "innovative", "intuitive", "meticulous", "motivated",
-    "optimistic", "passionate", "patient", "perceptive", "persistent",
-    "proactive", "receptive", "resourceful", "sincere", "strategic",
-    "thoughtful", "transparent", "versatile", "adaptable", "assertive",
-    "authentic", "compassionate", "cultivate", "dedicate", "flourish",
-    "foster", "influence", "inspire", "navigate", "nurture",
-    "overcome", "prioritize", "pursue", "reflect", "strive",
-    "accomplish", "ambitious", "appreciate", "aspire", "clarity",
-    "conscientious", "consistent", "creative", "curious", "dependable",
-    "determined", "diplomatic", "discerning", "effective", "ethical",
-    "expressive", "forthright", "industrious", "insightful", "judicious",
-    "magnanimous", "mindful", "objective", "pragmatic", "principled",
-    "proficient", "purposeful", "reliable", "remarkable", "resolute",
-    "steadfast", "stoic", "tactful", "trustworthy", "unwavering",
-    "vigilant", "visionary", "poised", "shrewd", "tenacity",
-    "serendipity", "luminous", "invigorate", "embolden", "perseverance",
-    "equanimity", "sagacious", "forthcoming", "inquisitive", "empathetic",
-]
-
 FALLBACKS = [
     ("resilient",   "adjective", "Able to recover quickly from difficult conditions."),
     ("eloquent",    "adjective", "Fluent or persuasive in speaking or writing."),
@@ -578,35 +595,47 @@ def _good_defn(defn: str) -> bool:
 def get_word():
     import requests as _req
 
-    candidates = WORD_BANK.copy()
-    random.shuffle(candidates)
-
     preferred_pos = ["adjective", "verb", "adverb", "noun"]
+    max_attempts  = 15  # try up to 15 random words
 
-    for w in candidates:
+    for _ in range(max_attempts):
         try:
+            # Step 1: Fetch a random word from Random Word API
             r = _req.get(
-                f"https://api.dictionaryapi.dev/api/v2/entries/en/{w}",
+                "https://random-word-api.herokuapp.com/word?number=1",
                 timeout=5)
             if r.status_code != 200:
                 continue
-            meanings = r.json()[0]["meanings"]
+            word = r.json()[0].lower().strip()
+
+            # Step 2: Fetch its definition from dictionary API
+            r2 = _req.get(
+                f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}",
+                timeout=5)
+            if r2.status_code != 200:
+                continue
+
+            data     = r2.json()[0]
+            meanings = data.get("meanings", [])
+
             for pref in preferred_pos:
                 for m in meanings:
                     if m["partOfSpeech"] == pref:
                         d = m["definitions"][0]["definition"]
                         if _good_defn(d):
-                            return w, pref, d
+                            print(f"    Word: {word.upper()}")
+                            return word, pref, d
+
         except Exception:
             continue
 
+    # Fallback if all API attempts fail
     return random.choice(FALLBACKS)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BGM PICKER
 # ══════════════════════════════════════════════════════════════════════════════
 def pick_bgm():
-    # Try both "Audios" (capital) and "audios" (lowercase) for cross-platform compat
     for folder_name in ("Audios", "audios", "AUDIOS"):
         audios_dir = os.path.join(SCRIPT_DIR, folder_name)
         if os.path.isdir(audios_dir):
@@ -617,12 +646,6 @@ def pick_bgm():
             if candidates:
                 chosen = random.choice(candidates)
                 return os.path.join(audios_dir, chosen), f"{folder_name}/{chosen}"
-
-    for name in ("bgm.mp3", "bgm.wav", "BGM.mp3", "BGM.wav"):
-        path = os.path.join(SCRIPT_DIR, name)
-        if os.path.exists(path):
-            return path, name
-
     return None, None
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -630,208 +653,89 @@ def pick_bgm():
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
     skip_upload = "--no-upload" in sys.argv
-
     try:
         import telegram_notifier as tg
         tg_ok = True
     except ImportError:
         tg_ok = False
-        print("⚠️  telegram_notifier.py not found — Telegram notifications disabled.")
 
-    print("🎬  Word Challenge Reel Generator  [v3 — FINAL]")
-    print("─" * 52)
+    print("🎬  Word Challenge Reel Generator  [v5 — GAMIFIED + UPDATED]")
+    print("─" * 56)
 
-    if tg_ok:
-        tg.notify_start()
-
-    for label, path in [("Screen 1 image", IMG_SCREEN1), ("Screen 3 image", IMG_SCREEN3)]:
-        ok = os.path.exists(path)
-        print(f"  {'✅' if ok else '⚠️  NOT FOUND'}  {label}: {os.path.basename(path)}")
+    if tg_ok: tg.notify_start()
 
     bgm_path, bgm_display = pick_bgm()
-    if bgm_path:
-        print(f"  🎵  Background music: {bgm_display}")
-    else:
-        print("  🔇  No audio found — add files to 'audios/' for background music")
+    print(f"  🎵  BGM: {bgm_display if bgm_path else 'None'}")
 
-    print("\n📖  Fetching word…")
-    try:
-        word, pos, defn = get_word()
-    except Exception as e:
-        if tg_ok: tg.notify_error("Word fetch", str(e))
-        raise
+    print("\n📖  Fetching word from Random Word API…")
+    word, pos, defn = get_word()
+    print(f"    Word: {word.upper()}\n")
 
-    print(f"    Word      : {word}")
-    print(f"    POS       : {pos or 'N/A'}")
-    snippet = (defn or "")[:65] + ("…" if defn and len(defn) > 65 else "")
-    print(f"    Definition: {snippet}\n")
+    if tg_ok: tg.notify_word(word, pos, defn)
 
-    if tg_ok:
-        tg.notify_word(word, pos, defn)
-
-    print("✨  Generating caption…")
     caption = None
     try:
         from instagram_uploader import build_caption
         caption = build_caption(word, pos, defn)
-        W_BOX = 64
-        SEP   = "─" * (W_BOX + 4)
-        print()
-        print(SEP)
-        print(f"  📝  CAPTION  ({len(caption.splitlines())} lines, {len(caption)} chars)")
-        print(SEP)
-        for raw_line in caption.splitlines():
-            if not raw_line: print(); continue
-            while len(raw_line) > W_BOX:
-                print("  " + raw_line[:W_BOX])
-                raw_line = raw_line[W_BOX:]
-            print("  " + raw_line)
-        print(SEP)
-        print()
-    except ImportError:
-        print("⚠️  instagram_uploader.py not found — caption skipped.\n")
-    except Exception as e:
-        print(f"⚠️  Caption generation failed: {e}\n")
+    except: pass
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))
 
-    print("▶  Screen 1/4  Ken Burns opener  (3 s) …", end=" ", flush=True)
+    print("▶  Screen 1/4  Opener …")
     s1_tot = 3 * FPS
     for f in range(s1_tot):
         writer.write(pil2cv(make_screen1_frame(f, s1_tot)))
-    print("✓")
 
-    print("▶  Screen 2/4  Animated reveal   (8 s) …", end=" ", flush=True)
+    print("▶  Screen 2/4  Reveal …")
     s2_tot = 8 * FPS
     for f in range(s2_tot):
         writer.write(pil2cv(make_screen2_frame(word, pos, defn, f, s2_tot)))
-    print("✓")
 
-    print("▶  Screen 3/4  Pulsing countdown (3 s) …", end=" ", flush=True)
+    print("▶  Screen 3/4  Countdown …")
     for n in [3, 2, 1]:
         for f in range(FPS):
             writer.write(pil2cv(make_screen3_frame(n, f, FPS)))
-    print("✓")
 
-    print("▶  Screen 4/4  Timer            (60 s) …")
+    print("▶  Screen 4/4  Timer …")
     s4_tot = 60 * FPS
     for f in range(s4_tot):
         secs = 60.0 - f / FPS
         writer.write(pil2cv(make_screen4_frame(word, secs)))
-        if f % (3 * FPS) == 0:
-            pct = int(f / s4_tot * 100)
-            bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
-            print(f"    [{bar}] {pct}%  ", end="\r")
-    print(f"    [{'█' * 20}] 100% ✓")
     writer.release()
 
-    print("\n🔊  Building audio…", end=" ", flush=True)
+    print("\n🔊  Building audio…")
     build_audio()
-    print("✓")
 
-    print("🎞   Merging video + audio…", end=" ", flush=True)
-
-    # Instagram Reels audio requirements:
-    #   - AAC-LC codec, stereo, 44100 Hz, CBR 128k minimum
-    #   - H.264 / yuv420p video
-    #   - movflags +faststart (moov atom at front — required for API upload)
-    #
-    # IMPORTANT: Instagram silently drops audio tracks with bitrate < 128k.
-    # Our beep WAV is mostly silence so AAC VBR compresses it to ~15 kbps
-    # and Instagram drops it. Fix: mix a silent pad track so the encoder
-    # always has a full-bandwidth signal, then force CBR 128k floor.
-    _VIDEO_FLAGS = [
-        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-        "-pix_fmt", "yuv420p",
-    ]
-    _AUDIO_FLAGS = [
-        "-c:a", "aac", "-profile:a", "aac_low",
-        "-b:a", "128k", "-ar", "44100", "-ac", "2",
-    ]
-    _CONTAINER_FLAGS = [
-        "-movflags", "+faststart",
-        "-shortest",
-    ]
-
-    # Silent pad — ensures AAC encoder always hits 128k CBR floor
-    _SILENT = ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+    print("🎞   Merging…")
+    _V = ["-c:v", "libx264", "-preset", "fast", "-crf", "22", "-pix_fmt", "yuv420p"]
+    _A = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2"]
+    _S = ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
 
     if bgm_path:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", TMP_VIDEO,
-            "-i", TMP_AUDIO,
-            "-i", bgm_path,
-            *_SILENT,
-            "-filter_complex",
-            "[1:a][2:a][3:a]amix=inputs=3:duration=first:weights=1 1 0.1,"
-            "volume=5.0,"
-            "aresample=44100,aformat=channel_layouts=stereo[aout]",
-            "-map", "0:v", "-map", "[aout]",
-            *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
-            OUTPUT,
-        ]
+        # BGM boosted 500% (5x), plays once and stops if shorter than 74s
+        cmd = ["ffmpeg", "-y",
+               "-i", TMP_VIDEO,
+               "-i", TMP_AUDIO,
+               "-i", bgm_path,
+               *_S,
+               "-filter_complex",
+               "[2:a]volume=7[bgm_v];"
+               "[1:a][bgm_v][3:a]amix=inputs=3:duration=first:weights=1 1 0.15[a]",
+               "-map", "0:v", "-map", "[a]", *_V, *_A, "-movflags", "+faststart", OUTPUT]
     else:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", TMP_VIDEO,
-            "-i", TMP_AUDIO,
-            *_SILENT,
-            "-filter_complex",
-            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.1,"
-            "volume=5.0,"
-            "aresample=44100,aformat=channel_layouts=stereo[aout]",
-            "-map", "0:v", "-map", "[aout]",
-            *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
-            OUTPUT,
-        ]
+        cmd = ["ffmpeg", "-y", "-i", TMP_VIDEO, "-i", TMP_AUDIO, *_S,
+               "-filter_complex", "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.1[a]",
+               "-map", "0:v", "-map", "[a]", *_V, *_A, "-movflags", "+faststart", OUTPUT]
 
-    r = subprocess.run(cmd, capture_output=True)
-    if r.returncode != 0:
-        print("\n❌  ffmpeg failed! stderr output:")
-        print(r.stderr.decode(errors="replace")[-1500:])
-        fallback = "copy" if os.name == "nt" else "cp"
-        subprocess.run([fallback, TMP_VIDEO, OUTPUT], shell=(os.name == "nt"))
-        print("(saved without audio — fix ffmpeg errors above)")
-    else:
-        print("✓")
+    subprocess.run(cmd, capture_output=True)
+    print(f"\n✅  Saved → {OUTPUT}")
 
-    mb = os.path.getsize(OUTPUT) / 1024 / 1024
-    print(f"\n✅  Saved → {OUTPUT}  ({mb:.1f} MB)")
-    print(f"    Word     : {word.upper()}")
-    print(f"    Duration : 74 s  |  {W}×{H}  |  9:16 Reel")
-
-    if tg_ok:
-        tg.notify_render_done(OUTPUT)
-        tg.send_video(OUTPUT, caption=f"🎬 Preview: word is <b>{word.upper()}</b>")
-
-    if skip_upload:
-        print("\n⏭   Skipping Instagram upload (--no-upload flag).")
-        if tg_ok: tg.notify_skipped("--no-upload flag was passed.")
-    else:
-        print("\n" + "─" * 45)
-        print("📱  Uploading to Instagram…")
-        print("─" * 45)
-        if tg_ok: tg.notify_upload_start()
+    if not skip_upload:
         try:
             from instagram_uploader import upload_reel
-            post_id = upload_reel(
-                video_path=OUTPUT, word=word, pos=pos, defn=defn,
-                prebuilt_caption=caption)
-            print(f"\n🎉  Reel is LIVE!  (Post ID: {post_id})")
-            if tg_ok: tg.notify_live(post_id, word)
-        except ImportError:
-            msg = "instagram_uploader.py not found — skipping upload."
-            print(f"⚠️  {msg}")
-            if tg_ok: tg.notify_skipped(msg)
-        except Exception as e:
-            print(f"❌  Upload failed:\n    {e}")
-            print(f"    Video saved locally as: {OUTPUT}")
-            if tg_ok: tg.notify_error("Instagram upload", str(e))
-
-    print("\n📱  Done!")
-
+            upload_reel(video_path=OUTPUT, word=word, pos=pos, defn=defn, prebuilt_caption=caption)
+        except: pass
 
 if __name__ == "__main__":
     main()
