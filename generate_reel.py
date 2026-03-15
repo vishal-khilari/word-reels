@@ -536,7 +536,7 @@ def build_audio():
     v_tick = 0.210   # was 0.30 → 0.30 * 0.70 = 0.210
 
     # ── Screen 3 Countdown (3→2→1) — boosted 500% on top of base ─────────────
-    countdown_vol = v_kick * 1.5
+    countdown_vol = v_kick * 1.5 * 1.60
     mix(11.0, gen_kick(dur=0.4, vol=countdown_vol))
     mix(12.0, gen_kick(dur=0.4, vol=countdown_vol))
     mix(13.0, gen_kick(dur=0.4, vol=countdown_vol))
