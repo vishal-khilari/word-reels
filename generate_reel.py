@@ -11,7 +11,7 @@ Instagram Word Challenge Reel Generator  [v3 — FINAL]
 
   Audio            : Countdown beeps + 10-second ticks + urgency beeps
   Random Music     : Place mp3/wav/aac/m4a files in an "audios/" sub-folder.
-                     One is chosen at random each run, mixed at 30% volume.
+                     One is chosen at random each run, mixed at 48% volume.
 
 Run:  python3 generate_reel.py
       python3 generate_reel.py --no-upload   ← skip Instagram upload
@@ -501,13 +501,13 @@ def build_audio():
             audio[s:e] += beep_arr.astype(np.int32)
 
     for t_b, freq in [(11.0, 700), (12.0, 700), (13.0, 1250)]:
-        mix(t_b, gen_beep(freq=freq, dur=0.28, vol=0.82))
+        mix(t_b, gen_beep(freq=freq, dur=0.28, vol=1.0))
 
     for elapsed_10 in (10, 20, 30, 40):
-        mix(14 + elapsed_10, gen_beep(freq=1050, dur=0.08, vol=0.38))
+        mix(14 + elapsed_10, gen_beep(freq=1050, dur=0.08, vol=1.0))
 
     for i in range(5):
-        mix(69 + i, gen_beep(freq=1450, dur=0.14, vol=0.60))
+        mix(69 + i, gen_beep(freq=1450, dur=0.14, vol=1.0))
 
     audio  = np.clip(audio, -32767, 32767).astype(np.int16)
     # Duplicate mono → stereo so ffmpeg receives a stereo source.
@@ -765,7 +765,8 @@ def main():
             "-i", bgm_path,
             *_SILENT,
             "-filter_complex",
-            "[1:a][2:a][3:a]amix=inputs=3:duration=first:weights=1 0.3 0.05,"
+            "[1:a][2:a][3:a]amix=inputs=3:duration=first:weights=1 1 0.1,"
+            "volume=5.0,"
             "aresample=44100,aformat=channel_layouts=stereo[aout]",
             "-map", "0:v", "-map", "[aout]",
             *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
@@ -778,7 +779,8 @@ def main():
             "-i", TMP_AUDIO,
             *_SILENT,
             "-filter_complex",
-            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.05,"
+            "[1:a][2:a]amix=inputs=2:duration=first:weights=1 0.1,"
+            "volume=5.0,"
             "aresample=44100,aformat=channel_layouts=stereo[aout]",
             "-map", "0:v", "-map", "[aout]",
             *_VIDEO_FLAGS, *_AUDIO_FLAGS, *_CONTAINER_FLAGS,
