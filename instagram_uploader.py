@@ -20,7 +20,8 @@ import os, sys, time, json, random, requests
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 ACCESS_TOKEN   = os.environ.get("INSTAGRAM_TOKEN",   "")
 IG_USER_ID     = os.environ.get("INSTAGRAM_USER_ID", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIz...")  # ← or paste key
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
 # ──────────────────────────────────────────────────────────────────────────────
 
 GRAPH_BASE = "https://graph.facebook.com/v21.0"
@@ -204,7 +205,7 @@ def _call_gemini(prompt: str) -> str:
 
 
 def _gemini_caption(word: str, pos: str, defn: str, hashtags: str) -> str:
-    if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("AIz..."):
+    if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not configured.")
 
     style_name, style_instructions = random.choice(CAPTION_STYLES)
