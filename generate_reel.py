@@ -367,7 +367,7 @@ def make_screen1_frame(f, total_frames):
         alf  = int(255*pe)
         if t > 4.2: alf = int(alf*(0.85+0.15*math.sin((t-4.2)*math.pi*2.4)))
         f_q  = fnt(F_BOLD, 86)
-        txt  = "Can you handle it?  \u2193"
+        txt  = "Can you handle it?"
         d    = ImageDraw.Draw(Image.new("RGB",(1,1)))
         tw, _ = tsz(d, txt, f_q)
         text_ov(txt, f_q, CX-tw//2, 1395, CORAL, alf, shadow_col=(180, 40, 20))
@@ -378,7 +378,7 @@ def make_screen1_frame(f, total_frames):
 # ══════════════════════════════════════════════════════════════════════════════
 #  SCREEN 2  —  WORD REVEAL
 #
-#  FIX 1: Gradient underline y moved down (word_y + wh + 36 instead of +14)
+#  FIX 1: Gradient underline y moved down (word_y + wh + 65 instead of +14)
 #  FIX 2: "Your 60-second challenge starts now." auto-sized to fit W-120
 # ══════════════════════════════════════════════════════════════════════════════
 def make_screen2_frame(word, pos, defn, f, total_frames):
@@ -432,7 +432,7 @@ def make_screen2_frame(word, pos, defn, f, total_frames):
         prog    = ease_out(clamp((t-1.55)/0.55))
         ul_half = int((ww//2 + 25) * prog)
         # ▼ CHANGED: +36 px gap below word (was +14)
-        ul_y    = word_y + wh + 36
+        ul_y    = word_y + wh + 65
         ul_cx   = W // 2
         if ul_half > 12:
             ov_ul = Image.new("RGBA",(W,H),(0,0,0,0))
@@ -460,7 +460,7 @@ def make_screen2_frame(word, pos, defn, f, total_frames):
                   min(40,(py1-py0+gi*4)//2), NEON_BLUE+(int(alf*0.09*(5-gi)),))
         rrect(od,[px0,py0,px1,py1], min(38,(py1-py0)//2),
               NEON_BLUE+(alf,), outline=(180,235,255,alf), width=3)
-        od.text((W//2-pw//2, py0+14), pos.upper(), font=f_p, fill=NAVY+(alf,))
+        od.text((W//2-pw//2, py0+7), pos.upper(), font=f_p, fill=NAVY+(alf,))
         img.alpha_composite(ov)
 
     # ── Divider
@@ -783,7 +783,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     # ═══════════════════════════════════════════════════════════════════════
     ov_zc = Image.new("RGBA",(W,H),(0,0,0,0))
     od_zc = ImageDraw.Draw(ov_zc)
-    rrect(od_zc, [35+sx, 1255+sy, W-35+sx, 1600+sy], 36,
+    rrect(od_zc, [35+sx, 1240+sy, W-35+sx, 1630+sy], 36,
           (0,0,0,90), outline=(255,255,255,18), width=1)
     img = composite(img, ov_zc)
     draw = ImageDraw.Draw(img)
@@ -799,7 +799,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     ov_pr  = Image.new("RGBA",(W,H),(0,0,0,0))
     od_pr  = ImageDraw.Draw(ov_pr)
     plines = wrap_lines(od_pr, prompt, f_pr, W-130)
-    yp     = 1272+sy
+    yp     = 1258+sy
     for line, plw, plh in plines:
         od_pr.text(((W-plw)//2+sx, yp), line, font=f_pr,
                    fill=(195,225,255,p_alf))
@@ -811,22 +811,22 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     f_cmt = fnt(F_MED, 52)
     cmt   = "Comment your attempt below! \U0001f447"
     cw, _ = tsz(draw, cmt, f_cmt)
-    draw.text(((W-cw)//2+sx, 1432+sy), cmt, font=f_cmt, fill=WHITE)
+    draw.text(((W-cw)//2+sx, 1420+sy), cmt, font=f_cmt, fill=WHITE)
 
     # "TIME LEFT" label above progress bar
     f_bar_lbl = fnt(F_MED, 40)
     bar_lbl   = "TIME LEFT"
     blw, _    = tsz(draw, bar_lbl, f_bar_lbl)
-    draw.text((90+sx, 1526+sy), bar_lbl, font=f_bar_lbl, fill=(165,200,255,160))
+    draw.text((90+sx, 1545+sy), bar_lbl, font=f_bar_lbl, fill=(165,200,255,160))
 
     # Percentage label
     pct_txt  = f"{int(secs_left)}s"
     f_pct    = fnt(F_BOLD, 40)
     ptw, _   = tsz(draw, pct_txt, f_pct)
-    draw.text((W-90-ptw+sx, 1526+sy), pct_txt, font=f_pct, fill=(165,200,255,160))
+    draw.text((W-90-ptw+sx, 1545+sy), pct_txt, font=f_pct, fill=(165,200,255,160))
 
     # Gradient progress bar
-    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1558+sy;  bh = 26
+    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1578+sy;  bh = 26
     rrect(draw, [bx1,by,bx2,by+bh], 13, (20,25,60))
     fw = int((bx2-bx1)*secs_left/60.0)
     if fw > 26:
