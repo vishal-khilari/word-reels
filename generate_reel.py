@@ -1186,7 +1186,7 @@ def main():
         f"S3={s3_dur:.1f}s  S4={s4_dur:.0f}s  Total={total:.1f}s"
     )
 
-    fourcc = cv2.VideoWriter_fourcc(*"avc1")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(TMP_VIDEO, fourcc, FPS, (W, H))
 
     print("\n  Rendering Screen 1/4  (intro)...")
