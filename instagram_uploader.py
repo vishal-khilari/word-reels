@@ -281,6 +281,7 @@ def init_upload_session(local_path: str, caption: str):
             "upload_type":   "resumable",
             "caption":       caption,
             "share_to_feed": "true",
+            "like_and_view_counts_disabled": "true",
             "access_token":  ACCESS_TOKEN,
         },
         timeout=30,
