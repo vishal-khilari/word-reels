@@ -391,6 +391,21 @@ def publish_container(container_id: str) -> str:
     print(f"  ✅  Post ID: {post_id}")
     return post_id
 
+def hide_like_counts(post_id: str) -> None:
+    print("  🙈  Hiding like counts…")
+    resp = requests.post(
+        f"{GRAPH_BASE}/{post_id}",
+        data={
+            "like_and_view_counts_disabled": "true",
+            "access_token": ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    body = resp.json()
+    if body.get("success"):
+        print("  ✅  Like counts hidden!")
+    else:
+        print(f"  ⚠️  Could not hide likes: {body}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT
@@ -411,7 +426,9 @@ def upload_reel(video_path: str, word: str, pos: str = "", defn: str = "",
     container_id, upload_url = init_upload_session(video_path, caption, word=word)
     upload_video_bytes(video_path, upload_url)
     wait_for_container(container_id)
-    return publish_container(container_id)
+    post_id = publish_container(container_id)
+    hide_like_counts(post_id)
+    return post_id
 
 
 # ── STANDALONE ────────────────────────────────────────────────────────────────
