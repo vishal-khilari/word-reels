@@ -685,7 +685,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     # ═══════════════════════════════════════════════════════════════════════
     # ZONE B  — Timer circle (cx=540, cy=910, r=310)
     # ═══════════════════════════════════════════════════════════════════════
-    CX = W//2+sx;  CY = 910+sy;  CR = 310
+    CX = W//2+sx;  CY = 860+sy;  CR = 300
 
     pulse_spd = 5.5 if secs_left <= 10 else 1.3
     pulse_amp = 0.034 if secs_left <= 10 else 0.012
@@ -743,9 +743,9 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
                  fill=arc_c, width=36)
         # leading dot
         angle = math.radians(-90 + sweep)
-        dot_x = int(CX + r * math.cos(angle))
-        dot_y = int(CY + r * math.sin(angle))
-        od_a.ellipse([dot_x-20,dot_y-20,dot_x+20,dot_y+20], fill=WHITE+(arc_c[3],))
+        dot_x = int(CX + (r) * math.cos(angle))
+        dot_y = int(CY + (r) * math.sin(angle))
+        od_a.ellipse([dot_x-18,dot_y-18,dot_x+18,dot_y+18], fill=WHITE+(255,))
         img  = composite(img, ov_a)
         draw = ImageDraw.Draw(img)
 
@@ -771,10 +771,10 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
         od_h = ImageDraw.Draw(ov_h)
         # badge background
         rrect(od_h, [W//2-hw//2-pad+sx, yh-pad//2+sy,
-                     W//2+hw//2+pad+sx, yh+hh+pad+sy],
+                    W//2+hw//2+pad+sx, yh+hh+pad+sy],
               36, YELLOW+(alf,), outline=(255,255,255,int(alf*0.6)), width=3)
         od_h.text((W//2-hw//2+sx, yh+sy), txt_half,
-                  font=f_hf, fill=NAVY+(alf,))
+                font=f_hf, fill=NAVY+(alf,))
         img = composite(img, ov_h)
         draw = ImageDraw.Draw(img)
 
@@ -783,8 +783,8 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     # ═══════════════════════════════════════════════════════════════════════
     ov_zc = Image.new("RGBA",(W,H),(0,0,0,0))
     od_zc = ImageDraw.Draw(ov_zc)
-    rrect(od_zc, [35+sx, 1240+sy, W-35+sx, 1630+sy], 36,
-          (0,0,0,90), outline=(255,255,255,18), width=1)
+    rrect(od_zc, [35+sx, 1360+sy, W-35+sx, 1720+sy], 36,
+        (0,0,0,90), outline=(255,255,255,18), width=1)
     img = composite(img, ov_zc)
     draw = ImageDraw.Draw(img)
 
@@ -799,7 +799,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     ov_pr  = Image.new("RGBA",(W,H),(0,0,0,0))
     od_pr  = ImageDraw.Draw(ov_pr)
     plines = wrap_lines(od_pr, prompt, f_pr, W-130)
-    yp     = 1258+sy
+    yp     = 1378+sy
     for line, plw, plh in plines:
         od_pr.text(((W-plw)//2+sx, yp), line, font=f_pr,
                    fill=(195,225,255,p_alf))
@@ -809,24 +809,24 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
 
     # CTA
     f_cmt = fnt(F_MED, 52)
-    cmt   = "Comment your attempt below! \U0001f447"
+    cmt   = "Comment your attempt below!"
     cw, _ = tsz(draw, cmt, f_cmt)
-    draw.text(((W-cw)//2+sx, 1420+sy), cmt, font=f_cmt, fill=WHITE)
+    draw.text(((W-cw)//2+sx, 1490+sy), cmt, font=f_cmt, fill=WHITE)
 
     # "TIME LEFT" label above progress bar
     f_bar_lbl = fnt(F_MED, 40)
     bar_lbl   = "TIME LEFT"
     blw, _    = tsz(draw, bar_lbl, f_bar_lbl)
-    draw.text((90+sx, 1545+sy), bar_lbl, font=f_bar_lbl, fill=(165,200,255,160))
+    draw.text((90+sx, 1600+sy), bar_lbl, font=f_bar_lbl, fill=(165,200,255,160))
 
     # Percentage label
     pct_txt  = f"{int(secs_left)}s"
     f_pct    = fnt(F_BOLD, 40)
     ptw, _   = tsz(draw, pct_txt, f_pct)
-    draw.text((W-90-ptw+sx, 1545+sy), pct_txt, font=f_pct, fill=(165,200,255,160))
+    draw.text((W-90-ptw+sx, 1600+sy), pct_txt, font=f_pct, fill=(165,200,255,160))
 
     # Gradient progress bar
-    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1578+sy;  bh = 26
+    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1645+sy;  bh = 26
     rrect(draw, [bx1,by,bx2,by+bh], 13, (20,25,60))
     fw = int((bx2-bx1)*secs_left/60.0)
     if fw > 26:
