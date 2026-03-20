@@ -12,7 +12,7 @@ to maximise Instagram's 2025 algorithm signals:
 SETUP: Set these two env-vars (or GitHub Secrets):
   INSTAGRAM_TOKEN    — long-lived Page access token
   INSTAGRAM_USER_ID  — your IG Business / Creator account ID
-  GEMINI_API_KEY     — paste your key below (or set as env-var)
+  GEMINI_API_KEY     — set as env-var or GitHub Secret
 """
 
 import os, sys, time, json, random, requests
@@ -20,9 +20,7 @@ import os, sys, time, json, random, requests
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 ACCESS_TOKEN   = os.environ.get("INSTAGRAM_TOKEN",   "")
 IG_USER_ID     = os.environ.get("INSTAGRAM_USER_ID", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-# ──────────────────────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY",    "")
 
 GRAPH_BASE = "https://graph.facebook.com/v21.0"
 GEMINI_URL = (
@@ -41,13 +39,12 @@ except ImportError:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HASHTAG STRATEGY  — 8-10 targeted tags per post
+#  HASHTAG STRATEGY  — 9 targeted tags per post
 #
-#  Why fewer tags? Instagram's 2024-2025 guidance explicitly recommends
-#  3-8 highly relevant hashtags over 20-30 generic ones. Over-tagging
-#  triggers the spam filter and suppresses Reel distribution.
+#  Instagram 2024-2025 guidance: 3-8 highly relevant hashtags beats 20-30
+#  generic ones. Over-tagging triggers spam filter and suppresses distribution.
 #
-#  Strategy: 2 mega (discovery) + 3-4 mid (niche) + 2-3 micro (community).
+#  Formula: 2 mega (discovery) + 4 mid (niche) + 3 micro (community).
 #  Rotated each run so the account never repeats the exact same set.
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -82,10 +79,6 @@ _TAGS_MICRO = [
 ]
 
 def build_hashtags() -> str:
-    """
-    Returns a varied 9-tag set each run.
-    Formula: 2 mega + 4 mid + 3 micro = 9 tags.
-    """
     tags = (
         random.sample(_TAGS_MEGA,  2) +
         random.sample(_TAGS_MID,   4) +
@@ -97,15 +90,6 @@ def build_hashtags() -> str:
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CAPTION STYLES — engineered for algorithm signals
-#
-#  Each style is designed to trigger a specific engagement behaviour:
-#    - Save  → "you'll want this later" framing
-#    - Send  → "tag someone / send to a friend" CTA
-#    - Comment → easy, low-friction prompt ("what's your sentence?")
-#    - Replay  → strong opening hook that rewards re-watching
-#
-#  The first line of every style fits within Instagram's 125-character
-#  preview (shown before the "more" cut-off in the feed).
 # ══════════════════════════════════════════════════════════════════════════════
 
 CAPTION_STYLES = [
@@ -228,6 +212,11 @@ CAPTION STRUCTURE:
 
 HARD RULES:
 - First line must be ≤125 characters (it is the only line visible before the "more" button in the feed — make it impossible to scroll past).
+- First line must create FOMO or urgency — make scrolling past feel like a loss.
+- Include the word in ALL CAPS at least once in the body.
+- End body with a dead-simple comment prompt: one short sentence, max 8 words.
+- Never use the word "follow" in the first 3 lines — Instagram suppresses it.
+- No generic phrases like "let me know" or "drop a comment" — be specific.
 - Put each section on its own line. Use a blank line between sections.
 - No asterisks, hashtags, or markdown anywhere in the body.
 - Maximum 2 emojis total in the body.
@@ -269,7 +258,7 @@ def build_caption(word: str, pos: str, defn: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 #  PHASE 1 — create upload container
 # ══════════════════════════════════════════════════════════════════════════════
-def init_upload_session(local_path: str, caption: str):
+def init_upload_session(local_path: str, caption: str, word: str = ""):
     file_size = os.path.getsize(local_path)
     print(f"  📋  Initialising upload session ({file_size/1024/1024:.1f} MB)…")
     _tg_phase("session", f"{file_size/1024/1024:.1f} MB — creating container…")
@@ -277,12 +266,14 @@ def init_upload_session(local_path: str, caption: str):
     resp = requests.post(
         f"{GRAPH_BASE}/{IG_USER_ID}/media",
         data={
-            "media_type":    "REELS",
-            "upload_type":   "resumable",
-            "caption":       caption,
-            "share_to_feed": "true",
-            "like_and_view_counts_disabled": "true",
-            "access_token":  ACCESS_TOKEN,
+            "media_type":                    "REELS",
+            "upload_type":                   "resumable",
+            "caption":                       caption,
+            "share_to_feed":                 "true",         # shows in feed AND reels tab
+            "like_and_view_counts_disabled": "true",         # hides likes — encourages saves
+            "audio_name":                    f"Word Challenge — {word.upper()}" if word else "Word Challenge",
+            "thumb_offset":                  "2000",         # word visible on thumbnail
+            "access_token":                  ACCESS_TOKEN,
         },
         timeout=30,
     )
@@ -416,7 +407,8 @@ def upload_reel(video_path: str, word: str, pos: str = "", defn: str = "",
     caption = prebuilt_caption if prebuilt_caption else build_caption(word, pos, defn)
     print(f"\n📝  Caption preview:\n{'─'*52}\n{caption[:350]}...\n{'─'*52}\n")
 
-    container_id, upload_url = init_upload_session(video_path, caption)
+    # ← word is now correctly passed to init_upload_session
+    container_id, upload_url = init_upload_session(video_path, caption, word=word)
     upload_video_bytes(video_path, upload_url)
     wait_for_container(container_id)
     return publish_container(container_id)
