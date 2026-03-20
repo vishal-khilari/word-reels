@@ -876,7 +876,8 @@ def get_word_info_from_gemini(word):
         '{"pos":"PART_OF_SPEECH","definition":"YOUR_DEFINITION"}\n\n'
         "Rules:\n"
         '- "pos": exactly one of: noun / verb / adjective / adverb\n'
-        '- "definition": exactly 10-14 words. Vivid, punchy, instantly clear.\n'
+        '- "definition": exactly 10-14 words. Factually accurate above all else — vivid and clear.\n'
+        "  Must reflect the true, dictionary-accurate meaning. No exaggeration or poetic license.\n"
         "  Do NOT start with the word. No example sentence. No pronunciation.\n"
         "  IMPORTANT: the definition must be a complete sentence ending with a period.\n\n"
         "Good example for 'resilient':\n"
