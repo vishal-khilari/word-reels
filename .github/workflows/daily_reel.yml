@@ -19,8 +19,13 @@ name: Post Daily Word Reel
 on:
   schedule:
     - cron: "50 0  * * *"
-    - cron: "50 7  * * *"
-    - cron: "50 11 * * *"
+    - cron: "50 2  * * *"
+    - cron: "50 4  * * *"
+    - cron: "50 6  * * *"
+    - cron: "50 8  * * *"
+    - cron: "50 10  * * *"
+    - cron: "50 12  * * *"
+    - cron: "50 14 * * *"
   workflow_dispatch: # also allows manual "Run workflow" in the UI
 
 jobs:
