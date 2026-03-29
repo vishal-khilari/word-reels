@@ -621,19 +621,6 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     ov_za = Image.new("RGBA",(W,H),(0,0,0,0))
     od_za = ImageDraw.Draw(ov_za)
 
-    # Card background with subtle border glow
-    card_col = (12, 18, 55, 105) if secs_left > 30 else \
-               (55, 22, 8, 105)  if secs_left > 10 else \
-               (70, 8, 8, 110)
-    rrect(od_za, [30+sx, 48+sy, W-30+sx, 452+sy], 36, card_col,
-          outline=(255,255,255,22), width=1)
-
-    # Accent stripe at top of card (colour-coded by urgency)
-    stripe_col = lerp_color(NEON_BLUE, CORAL, clamp(1.0-secs_left/60.0))
-    rrect(od_za, [30+sx, 48+sy, W-30+sx, 60+sy], 36,
-          stripe_col + (180,))
-    rrect(od_za, [30+sx, 56+sy, W-30+sx, 60+sy], 0,
-          stripe_col + (180,))
     img = composite(img, ov_za)
     draw = ImageDraw.Draw(img)
 
@@ -668,17 +655,17 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     f_ico = fnt(F_BOLD, 42)
     ov_rk = Image.new("RGBA",(W,H),(0,0,0,0))
     od_rk = ImageDraw.Draw(ov_rk)
-    rtxt  = f"{icon}  {rank}"
+    rtxt  = rank
     rw, rh = tsz(od_rk, rtxt, f_rk)
     rx0 = W//2-rw//2-36+sx;  ry0 = 358+sy
     rx1 = W//2+rw//2+36+sx;  ry1 = ry0+rh+22
     # outer glow halo
     for gi in range(4,0,-1):
         rrect(od_rk, [rx0-gi*3,ry0-gi*3,rx1+gi*3,ry1+gi*3],
-              min(40,(ry1-ry0+gi*6)//2), rc+(int(30*(5-gi)),))
+            min(40,(ry1-ry0+gi*6)//2), rc+(int(30*(5-gi)),))
     rrect(od_rk, [rx0,ry0,rx1,ry1], min(38,(ry1-ry0)//2),
-          rc+(255,), outline=(255,255,255,90), width=2)
-    od_rk.text((W//2-rw//2+sx, ry0+11), rtxt, font=f_rk, fill=NAVY+(255,))
+        rc+(255,), outline=(255,255,255,90), width=2)
+    od_rk.text((W//2+sx, ry0 + (ry1-ry0)//2), rtxt, font=f_rk, fill=NAVY+(255,), anchor="mm")
     img = composite(img, ov_rk)
     draw = ImageDraw.Draw(img)
 
@@ -781,11 +768,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     # ═══════════════════════════════════════════════════════════════════════
     # ZONE C  — Prompt + progress bar card (y: 1255→1600)
     # ═══════════════════════════════════════════════════════════════════════
-    ov_zc = Image.new("RGBA",(W,H),(0,0,0,0))
-    od_zc = ImageDraw.Draw(ov_zc)
-    rrect(od_zc, [35+sx, 1360+sy, W-35+sx, 1720+sy], 36,
-        (0,0,0,90), outline=(255,255,255,18), width=1)
-    img = composite(img, ov_zc)
+
     draw = ImageDraw.Draw(img)
 
     # Rotating prompt
@@ -826,7 +809,7 @@ def make_screen4_frame(word, secs_left, halfway_flash=0.0, prompt_idx=0):
     draw.text((W-90-ptw+sx, 1600+sy), pct_txt, font=f_pct, fill=(165,200,255,160))
 
     # Gradient progress bar
-    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1645+sy;  bh = 26
+    bx1 = 80+sx;  bx2 = W-80+sx;  by = 1647+sy;  bh = 26
     rrect(draw, [bx1,by,bx2,by+bh], 13, (20,25,60))
     fw = int((bx2-bx1)*secs_left/60.0)
     if fw > 26:
